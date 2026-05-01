@@ -1,3 +1,10 @@
+export type ManualInputs = {
+  growthRate?: string;
+  tripGenAssumptions?: string;
+  mitigationNotes?: string;
+  engineerConclusions?: string;
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -7,6 +14,7 @@ export type Project = {
   projectType: string;
   developmentSummary: string;
   preparedBy?: string;
+  manualInputs?: ManualInputs;
   createdAt: string;
 };
 

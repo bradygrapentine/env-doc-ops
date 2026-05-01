@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
 import { projectRepo } from "@/lib/db";
+import type { ManualInputs } from "@/lib/types";
+
+const MANUAL_INPUT_KEYS = [
+  "growthRate",
+  "tripGenAssumptions",
+  "mitigationNotes",
+  "engineerConclusions",
+] as const;
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const project = projectRepo.get(params.id);
@@ -24,7 +32,33 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const patch: Partial<Record<EditableKey, string>> = {};
+  const patch: Partial<Record<EditableKey, string>> & { manualInputs?: ManualInputs | undefined } =
+    {};
+
+  if ("manualInputs" in body) {
+    const v = body.manualInputs;
+    if (v === null || v === undefined) {
+      patch.manualInputs = undefined;
+    } else if (typeof v !== "object" || Array.isArray(v)) {
+      return NextResponse.json({ error: "Invalid field: manualInputs" }, { status: 400 });
+    } else {
+      const cleaned: ManualInputs = {};
+      for (const k of Object.keys(v) as (keyof ManualInputs)[]) {
+        if (!(MANUAL_INPUT_KEYS as readonly string[]).includes(k)) continue;
+        const val = (v as Record<string, unknown>)[k];
+        if (val === undefined || val === null) continue;
+        if (typeof val !== "string") {
+          return NextResponse.json(
+            { error: `Invalid manualInputs.${k}: expected string` },
+            { status: 400 },
+          );
+        }
+        cleaned[k] = val;
+      }
+      patch.manualInputs = cleaned;
+    }
+  }
+
   for (const key of EDITABLE) {
     if (key in body) {
       const v = body[key];

@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import type {
   Project,
+  ManualInputs,
   TrafficCountRow,
   Report,
   ReportSection,
@@ -22,6 +23,7 @@ const SCHEMA_SQL = `
     projectType TEXT NOT NULL,
     developmentSummary TEXT NOT NULL,
     preparedBy TEXT,
+    manualInputs TEXT,
     createdAt TEXT NOT NULL
   );
 
@@ -64,6 +66,55 @@ function migrate(conn: Database.Database) {
     if (!/duplicate column name/i.test(msg)) throw e;
   }
   conn.exec(`UPDATE report_sections SET machineBaseline = content WHERE machineBaseline IS NULL`);
+
+  try {
+    conn.exec(`ALTER TABLE projects ADD COLUMN manualInputs TEXT`);
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (!/duplicate column name/i.test(msg)) throw e;
+  }
+}
+
+type ProjectRow = Omit<Project, "manualInputs"> & { manualInputs: string | null };
+
+function hydrateProject(row: ProjectRow | undefined): Project | undefined {
+  if (!row) return undefined;
+  const { manualInputs, ...rest } = row;
+  const parsed = parseManualInputs(manualInputs);
+  return parsed === undefined ? (rest as Project) : ({ ...rest, manualInputs: parsed } as Project);
+}
+
+function parseManualInputs(raw: string | null): ManualInputs | undefined {
+  if (raw === null || raw === undefined || raw === "") return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+      return parsed as ManualInputs;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function serializeManualInputs(mi: ManualInputs | undefined): string | null {
+  if (!mi) return null;
+  // Strip empty-string values so we don't persist meaningless entries.
+  const cleaned: ManualInputs = {};
+  let count = 0;
+  for (const k of [
+    "growthRate",
+    "tripGenAssumptions",
+    "mitigationNotes",
+    "engineerConclusions",
+  ] as const) {
+    const v = mi[k];
+    if (typeof v === "string" && v.length > 0) {
+      cleaned[k] = v;
+      count++;
+    }
+  }
+  return count === 0 ? null : JSON.stringify(cleaned);
 }
 
 let _db: Database.Database | null = null;
@@ -98,31 +149,39 @@ const now = () => new Date().toISOString();
 
 export const projectRepo = {
   list(): Project[] {
-    return db().prepare("SELECT * FROM projects ORDER BY createdAt DESC").all() as Project[];
+    const rows = db()
+      .prepare("SELECT * FROM projects ORDER BY createdAt DESC")
+      .all() as ProjectRow[];
+    return rows.map((r) => hydrateProject(r)!);
   },
   get(id: string): Project | undefined {
-    return db().prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined;
+    const row = db().prepare("SELECT * FROM projects WHERE id = ?").get(id) as
+      | ProjectRow
+      | undefined;
+    return hydrateProject(row);
   },
   create(input: Omit<Project, "id" | "createdAt">): Project {
     const project: Project = { ...input, id: uid(), createdAt: now() };
     db()
       .prepare(
         `
-      INSERT INTO projects (id, name, location, jurisdiction, clientName, projectType, developmentSummary, preparedBy, createdAt)
-      VALUES (@id, @name, @location, @jurisdiction, @clientName, @projectType, @developmentSummary, @preparedBy, @createdAt)
+      INSERT INTO projects (id, name, location, jurisdiction, clientName, projectType, developmentSummary, preparedBy, manualInputs, createdAt)
+      VALUES (@id, @name, @location, @jurisdiction, @clientName, @projectType, @developmentSummary, @preparedBy, @manualInputs, @createdAt)
     `,
       )
       .run({
         ...project,
         clientName: project.clientName ?? null,
         preparedBy: project.preparedBy ?? null,
+        manualInputs: serializeManualInputs(project.manualInputs),
       });
-    return project;
+    // Re-read so empty manualInputs round-trips to undefined consistently.
+    return projectRepo.get(project.id)!;
   },
   update(id: string, patch: Partial<Omit<Project, "id" | "createdAt">>): Project | undefined {
     const conn = db();
-    const existing = conn.prepare("SELECT * FROM projects WHERE id = ?").get(id) as
-      | Project
+    const existing = conn.prepare("SELECT id FROM projects WHERE id = ?").get(id) as
+      | { id: string }
       | undefined;
     if (!existing) return undefined;
     const allowed = [
@@ -133,6 +192,7 @@ export const projectRepo = {
       "projectType",
       "developmentSummary",
       "preparedBy",
+      "manualInputs",
     ] as const;
     const fields: string[] = [];
     const values: (string | null)[] = [];
@@ -140,12 +200,16 @@ export const projectRepo = {
       if (key in patch) {
         fields.push(`${key} = ?`);
         const v = patch[key];
-        values.push(v === undefined ? null : (v as string));
+        if (key === "manualInputs") {
+          values.push(serializeManualInputs(v as ManualInputs | undefined));
+        } else {
+          values.push(v === undefined ? null : (v as string));
+        }
       }
     }
-    if (fields.length === 0) return existing;
+    if (fields.length === 0) return projectRepo.get(id);
     conn.prepare(`UPDATE projects SET ${fields.join(", ")} WHERE id = ?`).run(...values, id);
-    return conn.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project;
+    return projectRepo.get(id);
   },
   delete(id: string): boolean {
     const info = db().prepare("DELETE FROM projects WHERE id = ?").run(id);

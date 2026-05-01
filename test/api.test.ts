@@ -122,6 +122,29 @@ describe("PATCH /api/projects/:id", () => {
     expect(res.status).toBe(404);
   });
 
+  it("accepts manualInputs object and round-trips via GET", async () => {
+    const p = await makeProject();
+    const res = await patchProject(
+      jsonReq("PATCH", { manualInputs: { tripGenAssumptions: "Some text" } }),
+      { params: { id: p.id } },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.manualInputs).toEqual({ tripGenAssumptions: "Some text" });
+
+    const get = await getProject(emptyReq("GET"), { params: { id: p.id } });
+    const fresh = await get.json();
+    expect(fresh.manualInputs).toEqual({ tripGenAssumptions: "Some text" });
+  });
+
+  it("rejects manualInputs with a non-string value", async () => {
+    const p = await makeProject();
+    const res = await patchProject(jsonReq("PATCH", { manualInputs: { growthRate: 42 } }), {
+      params: { id: p.id },
+    });
+    expect(res.status).toBe(400);
+  });
+
   it("ignores attempts to change id or createdAt", async () => {
     const p = await makeProject();
     const res = await patchProject(

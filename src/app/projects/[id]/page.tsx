@@ -4,6 +4,7 @@ import { projectRepo, trafficRepo } from "@/lib/db";
 import { calculateMetrics } from "@/lib/reportGenerator";
 import UploadCsv from "./UploadCsv";
 import DeleteButton from "./DeleteButton";
+import ManualInputsForm from "./ManualInputsForm";
 
 export const dynamic = "force-dynamic";
 
@@ -111,6 +112,10 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
             />
           </dl>
         </aside>
+
+        <div className="lg:col-span-2">
+          <ManualInputsForm projectId={project.id} initial={project.manualInputs} />
+        </div>
       </div>
     </div>
   );

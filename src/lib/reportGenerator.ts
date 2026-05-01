@@ -40,6 +40,11 @@ export function generateReportSections(project: Project, rows: TrafficCountRow[]
   const m = calculateMetrics(rows);
   const list = m.intersections.length ? m.intersections.join(", ") : "no intersections imported";
 
+  const mi = project.manualInputs;
+  const tripGenOverride = mi?.tripGenAssumptions?.trim();
+  const conclusionOverride = mi?.engineerConclusions?.trim();
+  // TODO B-032 followup: wire growthRate into impact-analysis and mitigationNotes into mitigation.
+
   const draft = (id: string, title: string, order: number, content: string): ReportSection => ({
     id,
     title,
@@ -48,6 +53,14 @@ export function generateReportSections(project: Project, rows: TrafficCountRow[]
     status: "draft",
     machineBaseline: content,
   });
+
+  const tripGenContent = tripGenOverride
+    ? mi!.tripGenAssumptions!
+    : `Trip generation estimates should be prepared based on the proposed land use characteristics and applicable jurisdictional or ITE-based assumptions. For V1, this section should be reviewed and completed by the responsible traffic engineer.`;
+
+  const conclusionContent = conclusionOverride
+    ? mi!.engineerConclusions!
+    : `This report provides a preliminary evaluation of traffic conditions associated with the proposed project. The findings are intended to support engineering review and should be supplemented by professional judgment, jurisdictional requirements, and any required traffic modeling.`;
 
   return [
     draft(
@@ -74,12 +87,7 @@ export function generateReportSections(project: Project, rows: TrafficCountRow[]
       4,
       `Traffic count data were reviewed for the study intersections during the AM and PM peak periods. The highest observed AM total volume was recorded at ${m.highestAmIntersection ?? "N/A"} with ${m.highestAmTotal ?? 0} total vehicles. The highest observed PM total volume was recorded at ${m.highestPmIntersection ?? "N/A"} with ${m.highestPmTotal ?? 0} total vehicles.`,
     ),
-    draft(
-      "trip-generation",
-      "Trip Generation",
-      5,
-      `Trip generation estimates should be prepared based on the proposed land use characteristics and applicable jurisdictional or ITE-based assumptions. For V1, this section should be reviewed and completed by the responsible traffic engineer.`,
-    ),
+    draft("trip-generation", "Trip Generation", 5, tripGenContent),
     draft(
       "impact-analysis",
       "Impact Analysis",
@@ -92,11 +100,6 @@ export function generateReportSections(project: Project, rows: TrafficCountRow[]
       7,
       `Potential mitigation measures may include signal timing review, access management adjustments, turn lane evaluation, pedestrian improvements, or additional operational analysis. Final mitigation recommendations should be confirmed by the responsible traffic engineer.`,
     ),
-    draft(
-      "conclusion",
-      "Conclusion",
-      8,
-      `This report provides a preliminary evaluation of traffic conditions associated with the proposed project. The findings are intended to support engineering review and should be supplemented by professional judgment, jurisdictional requirements, and any required traffic modeling.`,
-    ),
+    draft("conclusion", "Conclusion", 8, conclusionContent),
   ];
 }
