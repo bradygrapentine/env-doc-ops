@@ -14,24 +14,16 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 | State       | Count |
 | ----------- | ----- |
-| Ready       | 8     |
+| Ready       | 4     |
 | In progress | 0     |
 | Blocked     | 0     |
-| Shipped     | 8     |
+| Shipped     | 12    |
 
 ---
 
 ## §1 Ready
 
-### Foundations
-
-- **B-002 — Lint + format hygiene** · P1 · S
-  Confirm `next lint` passes; add `eslint-config-next` rules and a Prettier config. Add `npm run check` aggregate.
-
 ### Report quality (the actual deliverable)
-
-- **B-012 — PDF export** · P1 · M
-  Spec lists PDF as "later." Add `POST /api/reports/:id/export-pdf` returning `application/pdf`. Use `docx` → HTML → headless Chromium, or render directly via `pdfkit` / `@react-pdf/renderer`.
 
 - **B-013 — Per-section regenerate** · P2 · S
   Button on the editor: "Regenerate this section from latest data" — re-runs the template for one section without touching others. Composes with B-011.
@@ -43,14 +35,11 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 ### Data input
 
-- **B-030 — CSV upload diff preview** · P1 · M
-  Before commit, show the parsed table with row/column-level errors highlighted. Today the user just sees a single error string from the API.
-
 - **B-031 — Direct row entry / inline edit of count rows** · P2 · M
   Some firms don't have a CSV — let them paste a small set of counts. Expand `traffic_counts` writes beyond the bulk replace path.
 
-- **B-032 — Manual inputs (growth rate, trip gen assumptions, mitigation notes)** · P1 · M
-  Spec §1 lists these as "Optional Manual Inputs." Add a key-value side panel on the project page; pipe values into the report templates.
+- **B-032b — Wire growthRate + mitigationNotes into report templates** · P1 · S
+  Followup from B-032: those two `manualInputs` fields are stored but not yet threaded into `impact-analysis` and `mitigation` section templates. TODO comment is in `src/lib/reportGenerator.ts`.
 
 ### Auth & multi-user
 
@@ -76,6 +65,18 @@ If a stakeholder pushes for any of these, see `envdocos_traffic_v1_package_full/
 ---
 
 ## §3 Shipped
+
+- **B-012 — PDF export** · `dfa56c3` · 2026-04-30
+  `pdfkit`-rendered PDF mirroring the DOCX structure: cover page, numbered section headings, peak summary + per-row traffic table inside Existing Conditions. Editor has Export PDF button next to Export DOCX. Required marking `pdfkit` as a server-external package in `next.config.mjs` so its AFM font files resolve at runtime.
+
+- **B-030 — CSV upload diff preview** · `85bf37f` · 2026-04-30
+  New `parseTrafficCsvDetailed` walks every row and reports per-row issues instead of bailing on first error. Preview endpoint at `…/traffic-data/preview`. UploadCsv now shows a per-row table with invalid rows highlighted; Confirm button gated on zero issues.
+
+- **B-032 — Manual project inputs (V1 slice)** · `003a97e` · 2026-04-30
+  `manualInputs` JSON column with four optional string fields. PATCH route accepts the object. Form on the project page edits and saves them. `tripGenAssumptions` and `engineerConclusions` override their canned section text when set; the other two are stored only (followup B-032b).
+
+- **B-002 — Prettier + npm run check** · `063a60e` · 2026-04-30
+  Prettier 3.8 + `.prettierrc` + format/format:check/check scripts. Codebase reformatted to the new style.
 
 - **B-020 — Project edit** · `25d855c` · 2026-04-30
   `PATCH /api/projects/:id` for editable fields, branded edit page prefilled from the existing project, ignores `id`/`createdAt` patches. 7 new API tests.
