@@ -162,7 +162,7 @@ describe("ReportEditor", () => {
   it("exports DOCX and PDF", async () => {
     const fetchSpy = vi
       .spyOn(global, "fetch")
-      .mockImplementation(async () => new Response(new Blob(["x"]), { status: 200 }));
+      .mockImplementation(async () => new Response("x", { status: 200 }));
     render(<ReportEditor report={report} metrics={metrics} />);
     await userEvent.click(screen.getByRole("button", { name: /export docx/i }));
     expect(fetchSpy).toHaveBeenCalledWith(
