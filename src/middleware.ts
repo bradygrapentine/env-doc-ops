@@ -38,10 +38,10 @@ export default auth((req) => {
   const { nextUrl } = req;
   const pathname = nextUrl.pathname;
 
-  // Defense in depth: 404 the entire test-only prefix in production builds.
-  // The route handler also checks, but middleware running before the handler
-  // closes any window where a misconfigured EMAIL_SINK env exposes the route.
-  if (pathname.startsWith("/api/test-only") && process.env.NODE_ENV === "production") {
+  // Defense in depth: gate the test-only prefix on EMAIL_SINK=memory. The
+  // route handler also checks, but middleware blocks before the handler runs.
+  // Production deploys must not set EMAIL_SINK=memory; E2E sets it explicitly.
+  if (pathname.startsWith("/api/test-only") && process.env.EMAIL_SINK !== "memory") {
     return NextResponse.json({ error: "Not Found" }, { status: 404 });
   }
 
