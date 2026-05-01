@@ -27,7 +27,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `AUTH_SECRET=e2e-secret AUTH_TRUST_HOST=true EMAIL_SINK=memory ENVDOCOS_DB_PATH=${DB_PATH} PORT=${PORT} npm run start`,
+    command: `AUTH_SECRET=e2e-secret AUTH_TRUST_HOST=true EMAIL_SINK=memory RATE_LIMIT_DISABLED=1 ENVDOCOS_DB_PATH=${DB_PATH} PORT=${PORT} npm run start`,
     port: PORT,
     timeout: 120_000,
     reuseExistingServer: !process.env.CI,

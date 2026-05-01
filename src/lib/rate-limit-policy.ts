@@ -71,6 +71,7 @@ export function gateUnauthenticatedEndpoint(
   action: string,
   bucket: { max: number; windowMs: number },
 ): NextResponse | null {
+  if (process.env.RATE_LIMIT_DISABLED === "1") return null;
   const r = consume(key, action, bucket);
   if (r.ok) return null;
   return NextResponse.json(
@@ -92,6 +93,7 @@ export function isUnauthenticatedBlocked(
   action: string,
   bucket: { max: number; windowMs: number },
 ): boolean {
+  if (process.env.RATE_LIMIT_DISABLED === "1") return false;
   const r = consume(key, action, bucket);
   return !r.ok;
 }
