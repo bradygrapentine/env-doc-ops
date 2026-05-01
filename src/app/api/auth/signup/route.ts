@@ -3,8 +3,12 @@ import bcrypt from "bcryptjs";
 import { userRepo } from "@/lib/db";
 import { tokenRepo } from "@/lib/tokens";
 import { emailLinkBase, sendVerificationEmail } from "@/lib/email";
+import { gateUnauthenticatedEndpoint, clientIp, SIGNUP_BUCKET } from "@/lib/rate-limit-policy";
 
 export async function POST(req: Request) {
+  const blocked = gateUnauthenticatedEndpoint(clientIp(req), "signup", SIGNUP_BUCKET);
+  if (blocked) return blocked;
+
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
 

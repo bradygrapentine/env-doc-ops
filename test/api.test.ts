@@ -2009,3 +2009,77 @@ describe("Audit log GDPR scrub on user delete", () => {
     expect(after.details).toBe(`free text mentioning ${shareeId} inline`);
   });
 });
+
+describe("Rate limit: signup / forgot-password / signin", () => {
+  // Build a Request with an explicit client IP so each test gets its own
+  // bucket (otherwise the "unknown" fallback collides across tests within a
+  // single suite when beforeEach hasn't fired yet for the assertions below).
+  function ipReq(method: string, body: unknown, ip: string): Request {
+    return new Request("http://test.local", {
+      method,
+      headers: { "content-type": "application/json", "x-forwarded-for": ip },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("signup allows up to 3 attempts per IP/hour and 429s the 4th", async () => {
+    const ip = "203.0.113.10";
+    for (let i = 0; i < 3; i += 1) {
+      const r = await signupRoute(
+        ipReq("POST", { email: `s${i}@example.com`, password: "password123", name: "S" }, ip),
+      );
+      expect(r.status).toBe(200);
+    }
+    const blocked = await signupRoute(
+      ipReq("POST", { email: "s3@example.com", password: "password123", name: "S" }, ip),
+    );
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("Retry-After")).toMatch(/^\d+$/);
+  });
+
+  it("signup buckets are per-IP — a different IP is unaffected", async () => {
+    const ipA = "203.0.113.20";
+    const ipB = "203.0.113.21";
+    for (let i = 0; i < 3; i += 1) {
+      await signupRoute(
+        ipReq("POST", { email: `a${i}@example.com`, password: "password123", name: "A" }, ipA),
+      );
+    }
+    const blockedA = await signupRoute(
+      ipReq("POST", { email: "a3@example.com", password: "password123", name: "A" }, ipA),
+    );
+    expect(blockedA.status).toBe(429);
+    const okB = await signupRoute(
+      ipReq("POST", { email: "b0@example.com", password: "password123", name: "B" }, ipB),
+    );
+    expect(okB.status).toBe(200);
+  });
+
+  it("forgot-password 429s after 10 attempts per IP", async () => {
+    const ip = "203.0.113.30";
+    for (let i = 0; i < 10; i += 1) {
+      const r = await forgotPasswordRoute(
+        ipReq("POST", { email: `none${i}@example.com` }, ip) as never,
+      );
+      expect(r.status).toBe(200);
+    }
+    const blocked = await forgotPasswordRoute(
+      ipReq("POST", { email: "none10@example.com" }, ip) as never,
+    );
+    expect(blocked.status).toBe(429);
+  });
+
+  it("signin gate fires after 10 attempts (silent block, email-keyed)", async () => {
+    // Auth.js Credentials.authorize can only return User|null, so the gate
+    // returns true on block and the caller silently returns null. We exercise
+    // the policy boundary directly here; an end-to-end signin test would
+    // require booting the next-auth handler, which the rest of the suite
+    // doesn't do.
+    const email = "rl-signin@example.com";
+    const { isUnauthenticatedBlocked, SIGNIN_BUCKET } = await import("@/lib/rate-limit-policy");
+    for (let i = 0; i < 10; i += 1) {
+      expect(isUnauthenticatedBlocked(email, "signin", SIGNIN_BUCKET)).toBe(false);
+    }
+    expect(isUnauthenticatedBlocked(email, "signin", SIGNIN_BUCKET)).toBe(true);
+  });
+});
