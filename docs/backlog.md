@@ -14,10 +14,10 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 | State       | Count |
 | ----------- | ----- |
-| Ready       | 5     |
+| Ready       | 0     |
 | In progress | 0     |
 | Blocked     | 1     |
-| Shipped     | 27    |
+| Shipped     | 32    |
 
 Last `/backlog-sync`: 2026-05-01
 
@@ -31,19 +31,7 @@ Last `/backlog-sync`: 2026-05-01
 
 <!-- B-051, B-052 shipped — see §3 Shipped -->
 
-- **B-054 — Cleanup from B-051 / B-052 closing review** · Four small items deferred from the post-merge audit:
-  1. `auditRepo.scrubUser` substring `LIKE` match + non-JSON fallback `split/join` is over-broad if a UUID ever appears as a substring of unrelated data. Either drop the fallback (assert details is JSON) or scope it. Latent — current data is always JSON.
-  2. `scrubUser` opens a `db().transaction(...)` even when called from `userRepo.delete`, which is already inside a transaction. Drop the inner transaction (callers wrap) or wrap the SELECT-loop too. SAVEPOINT makes this work today; clean up for clarity.
-  3. The email-change peek endpoint reads `email_change_tokens` directly via `_dbInternal()`. Add `tokenRepo.peekEmailChange(token)` and route through it so the schema lives in one place.
-  4. Add a test asserting `audit_log.createdAt` is preserved by `scrubUser` (existing tests cover `action` only).
-
-- **B-055 — Audit-log pagination** · `GET /api/projects/:id/audit?limit&before=<createdAt ISO>` (default 50, max 200). `auditRepo.list(projectId, {limit, before})`. `AuditPanel.tsx` Load-more button. Out of scope: retention/prune. Effort: S. Priority: P2.
-
-- **B-056 — Rate-limit signin / signup / forgot-password** · Spike first: confirm how to read client IP / request inside Auth.js v5 Credentials authorize, fall back to email-keyed limiting if needed. New `gateUnauthenticatedEndpoint(key, action, bucket)` in `rate-limit-policy.ts`. Limits: signin/forgot 10/15min; signup 3/hour. Effort: S. Priority: P1.
-
-- **B-057 — CSV upload row + byte cap** · Spike first: choose body-size mechanism on Next.js 14 App Router. Cap: 1 MiB body, 5000 rows post-parse. 413 (body) / 422 (rows) with clear error in `UploadCsv`. Effort: S. Priority: P1.
-
-- **B-058 — Email-change notification to old address** · On successful `change-email` token issuance, also email the _current_ address with a "wasn't me" CTA. Old-address email must NOT contain the new address plaintext. Tests assert two emails captured; old contains CTA, not new email string. Effort: S. Priority: P1.
+<!-- B-054, B-055, B-056, B-057, B-058 shipped — see §3 Shipped -->
 
 ---
 
@@ -84,6 +72,21 @@ If a stakeholder pushes for any of these, see `envdocos_traffic_v1_package_full/
 ---
 
 ## §3 Shipped
+
+- **B-057 — CSV upload row + byte cap** · `8356995` · 2026-05-01
+  Hard caps in `src/lib/csv.ts`: 1 MiB body (413), 5000 rows (422). `checkCsvBodyCap` checks Content-Length header for early reject + UTF-8 byte length post-read for defense in depth. Wired into both `/traffic-data` and `/traffic-data/preview` routes. UploadCsv surfaces error string unchanged. 5 new API tests.
+
+- **B-056 — Rate-limit signin / signup / forgot-password** · `2e3dc36` · 2026-05-01
+  New `gateUnauthenticatedEndpoint` (HTTP) and `isUnauthenticatedBlocked` (soft, for Auth.js authorize) helpers in `rate-limit-policy.ts`. Keying: signin email-keyed (10/15min, silent null on block, bucket cleared on success), signup IP-keyed (3/hr), forgot-password IP-keyed (10/15min, NOT email-keyed to avoid enumeration leak). `clientIp(req)` helper trusts x-forwarded-for. 4 new tests.
+
+- **B-058 — Email-change notification to old address** · `921b462` · 2026-05-01
+  On successful change-email token issuance, also email the current address with a "wasn't me" CTA linking to `/account`. Notification body MUST NOT contain the new email plaintext (avoids leak if old account is compromised). Soft-fail: notification send failure doesn't fail the primary request. 2 new tests.
+
+- **B-055 — Audit-log pagination** · `fc12691` · 2026-05-01
+  `auditRepo.listForProject(projectId, {limit?, before?})` cursor pagination (default 50, max 200, clamps invalid). `GET /api/projects/:id/audit` accepts `?limit&before`. AuditPanel Load-more button re-fetches with the oldest visible row's createdAt as `before`. 5 new tests (3 API + 2 component).
+
+- **B-054 — Cleanup from B-051 / B-052 closing review** · `ab77053` · 2026-05-01
+  `auditRepo.scrubUser`: dropped non-JSON substring fallback (details is contractually JSON; substring rewrite was over-broad), dropped inner db().transaction (caller wraps). `tokenRepo.peekEmailChange` added; confirm-email-change GET handler routes through it instead of reaching into the schema via `_dbInternal()`. 2 new tests (createdAt preserved; non-JSON details ignored).
 
 - **B-052 — Audit-log GDPR scrub on account delete** · 2026-05-01
   `auditRepo.scrubUser(userId)` rewrites every `audit_log.details` JSON value that equals the deleted user's UUID to the literal `"[scrubbed]"`. Wired into `userRepo.delete()` inside a `db().transaction(...)` so scrub fires before the FK SET NULL cascade. Idempotent. 5 new API tests covering actor scrub, no-over-scrub, target-of-share scrub, idempotency, and end-to-end DELETE /api/auth/account.
