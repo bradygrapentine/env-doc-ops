@@ -381,6 +381,12 @@ export const userRepo = {
     const info = db().prepare("UPDATE projects SET userId = ? WHERE userId IS NULL").run(userId);
     return info.changes;
   },
+  updatePassword(userId: string, passwordHash: string): boolean {
+    const info = db()
+      .prepare("UPDATE users SET passwordHash = ? WHERE id = ?")
+      .run(passwordHash, userId);
+    return info.changes > 0;
+  },
 };
 
 export type { Period };

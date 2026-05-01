@@ -28,6 +28,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <Link href="/projects/new">New Project</Link>
                   <span className="text-gray-400">·</span>
                   <span>{user.name ?? user.email}</span>
+                  <Link href="/account">Account</Link>
                   <SignOutButton />
                 </>
               ) : (
