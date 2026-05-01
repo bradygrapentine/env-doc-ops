@@ -1,0 +1,9 @@
+intersection,period,approach,inbound,outbound,total
+Main St & 1st Ave,AM,Northbound,120,90,210
+Main St & 1st Ave,AM,Southbound,100,110,210
+Main St & 1st Ave,PM,Northbound,160,110,270
+Main St & 1st Ave,PM,Southbound,140,130,270
+Main St & 2nd Ave,AM,Eastbound,200,150,350
+Main St & 2nd Ave,AM,Westbound,180,170,350
+Main St & 2nd Ave,PM,Eastbound,250,180,430
+Main St & 2nd Ave,PM,Westbound,210,220,430

@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+dist/
+*.log
+.DS_Store
+.env*
+data/*.db
+data/*.db-journal
+data/*.db-shm
+data/*.db-wal
+next-env.d.ts
+tsconfig.tsbuildinfo
+.memsearch/
