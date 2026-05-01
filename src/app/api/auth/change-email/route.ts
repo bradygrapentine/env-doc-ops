@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { userRepo } from "@/lib/db";
 import { tokenRepo } from "@/lib/tokens";
-import { sendEmailChangeConfirmation } from "@/lib/email";
+import { emailLinkBase, sendEmailChangeConfirmation } from "@/lib/email";
 import { getSessionUserId } from "@/lib/session";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -45,8 +45,7 @@ export async function POST(req: Request) {
   }
 
   const { token } = tokenRepo.createEmailChange(userId, newEmail);
-  const origin = req.headers.get("origin") ?? process.env.AUTH_URL ?? "http://localhost:3000";
-  const link = `${origin}/api/auth/confirm-email-change?token=${token}`;
+  const link = `${emailLinkBase(req)}/api/auth/confirm-email-change?token=${token}`;
   await sendEmailChangeConfirmation(newEmail, link);
 
   return NextResponse.json({ ok: true });

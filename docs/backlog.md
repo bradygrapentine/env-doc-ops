@@ -14,7 +14,7 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 | State       | Count |
 | ----------- | ----- |
-| Ready       | 0     |
+| Ready       | 3     |
 | In progress | 0     |
 | Blocked     | 0     |
 | Shipped     | 24    |
@@ -25,7 +25,9 @@ Last `/backlog-sync`: 2026-05-01
 
 ## §1 Ready
 
-_Empty — V1 backlog is fully shipped._
+- **B-050 — Rate-limit password-bearing endpoints** · `change-password`, `change-email`, `account` DELETE all bcrypt-compare on user input with no throttle. A stolen low-priv session can brute-force the password to escalate. Add a per-user token-bucket (in-memory is fine for V1; Redis when we have it).
+- **B-051 — Replace GET-confirm on email-change with a confirmation page** · Mail clients / corporate URL scanners that prefetch links currently burn the single-use email-change token before the user clicks. Switch to a page that shows "Confirm new email = X?" with a POST button. Same pattern is worth applying to verification email links eventually.
+- **B-052 — Audit-log details retention on account delete** · `audit_log.userId` is set to NULL on user delete, but the `details` JSON column still contains the deleted user's UUID (and any email logged before account-delete). For GDPR-style erasure we need to scrub or hash these fields when the referenced user is deleted.
 
 Followups noted during execution (low priority polish):
 

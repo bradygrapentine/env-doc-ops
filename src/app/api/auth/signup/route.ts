@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { userRepo } from "@/lib/db";
 import { tokenRepo } from "@/lib/tokens";
-import { sendVerificationEmail } from "@/lib/email";
+import { emailLinkBase, sendVerificationEmail } from "@/lib/email";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -40,8 +40,7 @@ export async function POST(req: Request) {
   // Kick off verification email — failure must not block signup.
   try {
     const { token } = tokenRepo.createVerification(user.id);
-    const origin = new URL(req.url).origin;
-    const link = `${origin}/api/auth/verify-email?token=${token}`;
+    const link = `${emailLinkBase(req)}/api/auth/verify-email?token=${token}`;
     await sendVerificationEmail(user.email, link);
   } catch (err) {
     console.warn("[signup] failed to send verification email:", (err as Error).message);

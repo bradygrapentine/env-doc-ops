@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { userRepo } from "@/lib/db";
 import { tokenRepo } from "@/lib/tokens";
-import { sendPasswordResetEmail } from "@/lib/email";
+import { emailLinkBase, sendPasswordResetEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   if (user) {
     try {
       const { token } = tokenRepo.createReset(user.id);
-      const link = `${req.nextUrl.origin}/reset-password?token=${token}`;
+      const link = `${emailLinkBase(req)}/reset-password?token=${token}`;
       await sendPasswordResetEmail(user.email, link);
     } catch (err) {
       console.warn("[forgot-password] failed:", (err as Error).message);

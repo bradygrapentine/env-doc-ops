@@ -10,12 +10,14 @@ export type AccessMode = "read" | "write";
 /**
  * Returns the current session user id, or null if signed out.
  *
- * Test-only backdoor: when AUTH_TEST_USER_ID is set in the environment,
- * skips the Auth.js call and returns it directly. Production code paths
- * never set this. Tests set it via beforeEach.
+ * Test-only backdoor: when running under Vitest (VITEST=true) AND in test
+ * mode (NODE_ENV=test), skips the Auth.js call and returns AUTH_TEST_USER_ID
+ * directly. The double check is defense in depth: NODE_ENV alone could be
+ * spoofed by a misconfigured deploy that copies a vitest env file; VITEST
+ * is set by the test runner at process start and shouldn't appear elsewhere.
  */
 export async function getSessionUserId(): Promise<string | null> {
-  if (process.env.NODE_ENV === "test") {
+  if (process.env.NODE_ENV === "test" && process.env.VITEST === "true") {
     return process.env.AUTH_TEST_USER_ID ?? null;
   }
   const session = await auth();

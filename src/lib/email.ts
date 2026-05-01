@@ -1,3 +1,24 @@
+/**
+ * Resolve the base URL to use in outbound email links. Prefer AUTH_URL
+ * (a server-side env we control) over the request's Origin header (which
+ * an authenticated attacker can spoof — they could send themselves a
+ * change-email request from `Origin: https://evil.example` and the link
+ * we mail them would point at the spoofed host while carrying our token).
+ *
+ * Fall back to the request-derived value only when AUTH_URL is unset
+ * (i.e. local dev without env wiring). Tests pin AUTH_URL via setup.
+ */
+export function emailLinkBase(req: Request): string {
+  if (process.env.AUTH_URL) return process.env.AUTH_URL;
+  const fromHeader = req.headers.get("origin");
+  if (fromHeader) return fromHeader;
+  try {
+    return new URL(req.url).origin;
+  } catch {
+    return "http://localhost:3000";
+  }
+}
+
 type CapturedEmail = {
   to: string;
   subject: string;
