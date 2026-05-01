@@ -8,22 +8,6 @@ afterEach(() => {
   cleanup();
 });
 
-// React's synthetic events null out e.currentTarget after the handler awaits,
-// so existing components that call `e.currentTarget.reset()` post-await throw a
-// benign TypeError that surfaces as an unhandled rejection. Swallow it so the
-// test suite doesn't exit non-zero. Application bug tracked separately.
-if (typeof process !== "undefined") {
-  process.on("unhandledRejection", (reason) => {
-    if (
-      reason instanceof TypeError &&
-      /Cannot read properties of null \(reading 'reset'\)/.test(reason.message)
-    ) {
-      return;
-    }
-    throw reason;
-  });
-}
-
 vi.mock("next/navigation", () => {
   const router = {
     push: vi.fn(),

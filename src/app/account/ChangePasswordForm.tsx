@@ -9,11 +9,13 @@ export default function ChangePasswordForm() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // Capture the form ref synchronously — React nulls e.currentTarget after await.
+    const form = e.currentTarget;
     setSubmitting(true);
     setError(null);
     setSuccess(false);
 
-    const fd = new FormData(e.currentTarget);
+    const fd = new FormData(form);
     const currentPassword = String(fd.get("currentPassword") ?? "");
     const newPassword = String(fd.get("newPassword") ?? "");
     const confirmPassword = String(fd.get("confirmPassword") ?? "");
@@ -38,7 +40,7 @@ export default function ChangePasswordForm() {
     if (res.ok) {
       setSuccess(true);
       setSubmitting(false);
-      e.currentTarget.reset();
+      form.reset();
       return;
     }
 
