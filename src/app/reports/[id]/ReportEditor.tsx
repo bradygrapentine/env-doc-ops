@@ -17,17 +17,26 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Report, ReportSection, SectionStatus, TrafficMetrics } from "@/lib/types";
+import type {
+  ProjectAccessRole,
+  Report,
+  ReportSection,
+  SectionStatus,
+  TrafficMetrics,
+} from "@/lib/types";
 
 const STATUSES: SectionStatus[] = ["draft", "reviewed", "final"];
 
 export default function ReportEditor({
   report,
   metrics,
+  role = "owner",
 }: {
   report: Report;
   metrics: TrafficMetrics;
+  role?: ProjectAccessRole;
 }) {
+  const readOnly = role === "reader";
   const [sections, setSections] = useState<ReportSection[]>(report.sections);
   const [activeId, setActiveId] = useState<string>(report.sections[0]?.id ?? "");
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -238,7 +247,7 @@ export default function ReportEditor({
 
       <div className="grid grid-cols-12 gap-6">
         <aside className="col-span-12 lg:col-span-3 bg-white border rounded p-4 h-fit">
-          {mounted ? (
+          {mounted && !readOnly ? (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext
                 items={sections.map((s) => s.id)}
@@ -285,7 +294,7 @@ export default function ReportEditor({
 
           {reorderError && <div className="mt-2 text-xs text-red-600">{reorderError}</div>}
 
-          {showAddForm ? (
+          {readOnly ? null : showAddForm ? (
             <form onSubmit={submitAddSection} className="mt-3 space-y-2">
               <input
                 type="text"
@@ -350,46 +359,60 @@ export default function ReportEditor({
                 <h2 className="text-lg font-medium">
                   {active.order}. {active.title}
                 </h2>
-                <select
-                  value={active.status}
-                  onChange={(e) => updateActive({ status: e.target.value as SectionStatus })}
-                  className="text-xs border rounded px-2 py-1"
-                >
-                  {STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <textarea
-                value={active.content}
-                onChange={(e) => updateActive({ content: e.target.value })}
-                rows={14}
-                className="w-full border rounded p-3 text-sm font-mono"
-              />
-              <div className="mt-3 flex justify-end items-center gap-3">
-                {savingId === active.id && <span className="text-xs text-gray-500">Saving…</span>}
-                {regeneratingId === active.id && (
-                  <span className="text-xs text-gray-500">Regenerating…</span>
-                )}
-                {active.kind === "standard" && (
-                  <button
-                    onClick={() => regenerateSection(active)}
-                    disabled={regeneratingId === active.id}
-                    className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+                {readOnly ? (
+                  <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                    {active.status}
+                  </span>
+                ) : (
+                  <select
+                    value={active.status}
+                    onChange={(e) => updateActive({ status: e.target.value as SectionStatus })}
+                    className="text-xs border rounded px-2 py-1"
                   >
-                    Regenerate from data
-                  </button>
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
                 )}
-                <button
-                  onClick={() => saveSection(active)}
-                  className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
-                >
-                  Save section
-                </button>
               </div>
-              {regenerateError && (
+              {readOnly ? (
+                <div className="w-full border rounded p-3 text-sm font-mono whitespace-pre-wrap bg-gray-50">
+                  {active.content}
+                </div>
+              ) : (
+                <textarea
+                  value={active.content}
+                  onChange={(e) => updateActive({ content: e.target.value })}
+                  rows={14}
+                  className="w-full border rounded p-3 text-sm font-mono"
+                />
+              )}
+              {!readOnly && (
+                <div className="mt-3 flex justify-end items-center gap-3">
+                  {savingId === active.id && <span className="text-xs text-gray-500">Saving…</span>}
+                  {regeneratingId === active.id && (
+                    <span className="text-xs text-gray-500">Regenerating…</span>
+                  )}
+                  {active.kind === "standard" && (
+                    <button
+                      onClick={() => regenerateSection(active)}
+                      disabled={regeneratingId === active.id}
+                      className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Regenerate from data
+                    </button>
+                  )}
+                  <button
+                    onClick={() => saveSection(active)}
+                    className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
+                  >
+                    Save section
+                  </button>
+                </div>
+              )}
+              {!readOnly && regenerateError && (
                 <div className="mt-2 text-xs text-red-600 text-right">{regenerateError}</div>
               )}
             </>

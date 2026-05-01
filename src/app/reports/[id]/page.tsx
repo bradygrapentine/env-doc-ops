@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { reportRepo, projectRepo, trafficRepo } from "@/lib/db";
+import { trafficRepo } from "@/lib/db";
 import { calculateMetrics } from "@/lib/reportGenerator";
-import { getSessionUserId } from "@/lib/session";
+import { getSessionUserId, requireReportAccess } from "@/lib/session";
 import ReportEditor from "./ReportEditor";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +10,9 @@ export const dynamic = "force-dynamic";
 export default async function ReportPage({ params }: { params: { id: string } }) {
   const userId = await getSessionUserId();
   if (!userId) redirect(`/signin?callbackUrl=/reports/${params.id}`);
-  const report = reportRepo.get(params.id);
-  if (!report) notFound();
-  const project = projectRepo.get(report.projectId);
-  if (!project || project.userId !== userId) notFound();
+  const guard = await requireReportAccess(params.id, "read");
+  if (!guard.ok) notFound();
+  const { project, report, role } = guard;
 
   const rows = trafficRepo.listByProject(project.id);
   const metrics = calculateMetrics(rows);
@@ -30,7 +29,7 @@ export default async function ReportPage({ params }: { params: { id: string } })
         </div>
       </div>
 
-      <ReportEditor report={report} metrics={metrics} />
+      <ReportEditor report={report} metrics={metrics} role={role} />
     </div>
   );
 }

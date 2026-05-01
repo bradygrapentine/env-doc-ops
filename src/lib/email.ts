@@ -15,12 +15,12 @@ export function clearCapturedEmails(): void {
   captured.length = 0;
 }
 
-function useMemorySink(): boolean {
+function isMemorySink(): boolean {
   return process.env.EMAIL_SINK === "memory" || process.env.NODE_ENV === "test";
 }
 
 async function send(to: string, subject: string, body: string, link: string): Promise<void> {
-  if (useMemorySink()) {
+  if (isMemorySink()) {
     captured.push({ to, subject, body, link });
     return;
   }

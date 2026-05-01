@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { projectRepo } from "@/lib/db";
-import { requireOwnedProject } from "@/lib/session";
+import { requireOwnedProject, requireProjectAccess } from "@/lib/session";
 import type { ManualInputs } from "@/lib/types";
 
 const MANUAL_INPUT_KEYS = [
@@ -11,7 +11,7 @@ const MANUAL_INPUT_KEYS = [
 ] as const;
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const guard = await requireOwnedProject(params.id);
+  const guard = await requireProjectAccess(params.id, "read");
   if (!guard.ok) return guard.error;
   return NextResponse.json(guard.project);
 }

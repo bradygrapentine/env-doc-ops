@@ -39,6 +39,8 @@ import { POST as sendVerificationRoute } from "@/app/api/auth/send-verification/
 import { GET as verifyEmailRoute } from "@/app/api/auth/verify-email/route";
 import { tokenRepo } from "@/lib/tokens";
 import { getCapturedEmails, clearCapturedEmails } from "@/lib/email";
+import { GET as listShares, POST as addShare } from "@/app/api/projects/[id]/shares/route";
+import { DELETE as removeShare } from "@/app/api/projects/[id]/shares/[userId]/route";
 
 const SAMPLE_CSV = fs.readFileSync(
   path.join(process.cwd(), "sample_data/sample_traffic_counts.csv"),
@@ -902,6 +904,168 @@ describe("DELETE /api/reports/:id/sections/:sectionId", () => {
       params: { id: reportId, sectionId: "executive-summary" },
     });
     expect(res.status).toBe(401);
+  });
+});
+
+describe("Per-project sharing", () => {
+  it("owner shares; sharee can GET and sees in list with role=reader", async () => {
+    const project = await makeProject();
+    const ownerId = process.env.AUTH_TEST_USER_ID!;
+    const shareeId = seedUser("share-a@example.com");
+
+    const inv = await addShare(jsonReq("POST", { email: "share-a@example.com" }), {
+      params: { id: project.id },
+    });
+    expect(inv.status).toBe(200);
+
+    process.env.AUTH_TEST_USER_ID = shareeId;
+    const get = await getProject(emptyReq("GET"), { params: { id: project.id } });
+    expect(get.status).toBe(200);
+
+    const list = await listProjects();
+    const body = await list.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].id).toBe(project.id);
+    expect(body[0].role).toBe("reader");
+
+    process.env.AUTH_TEST_USER_ID = ownerId;
+  });
+
+  it("sharee PATCH project → 403 with Read-only access", async () => {
+    const project = await makeProject();
+    const shareeId = seedUser("share-b@example.com");
+    await addShare(jsonReq("POST", { email: "share-b@example.com" }), {
+      params: { id: project.id },
+    });
+    process.env.AUTH_TEST_USER_ID = shareeId;
+    const res = await patchProject(jsonReq("PATCH", { name: "Hacked" }), {
+      params: { id: project.id },
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("Read-only access");
+  });
+
+  it("sharee DELETE project → 403", async () => {
+    const project = await makeProject();
+    const shareeId = seedUser("share-c@example.com");
+    await addShare(jsonReq("POST", { email: "share-c@example.com" }), {
+      params: { id: project.id },
+    });
+    process.env.AUTH_TEST_USER_ID = shareeId;
+    const res = await deleteProject(emptyReq("DELETE"), { params: { id: project.id } });
+    expect(res.status).toBe(403);
+  });
+
+  it("sharee mutating endpoints all return 403", async () => {
+    const { project, reportId } = await makeReport();
+    const shareeId = seedUser("share-d@example.com");
+    await addShare(jsonReq("POST", { email: "share-d@example.com" }), {
+      params: { id: project.id },
+    });
+    process.env.AUTH_TEST_USER_ID = shareeId;
+
+    const csv = await uploadCsv(textReq("POST", SAMPLE_CSV), { params: { id: project.id } });
+    expect(csv.status).toBe(403);
+
+    const gen = await generateReport(emptyReq("POST"), { params: { id: project.id } });
+    expect(gen.status).toBe(403);
+
+    const sec = await patchSection(jsonReq("PATCH", { content: "X" }), {
+      params: { id: reportId, sectionId: "executive-summary" },
+    });
+    expect(sec.status).toBe(403);
+
+    const regen = await regenerateSection(emptyReq("POST"), {
+      params: { id: reportId, sectionId: "executive-summary" },
+    });
+    expect(regen.status).toBe(403);
+  });
+
+  it("sharee CAN export DOCX and PDF", async () => {
+    const { project, reportId } = await makeReport();
+    const shareeId = seedUser("share-e@example.com");
+    await addShare(jsonReq("POST", { email: "share-e@example.com" }), {
+      params: { id: project.id },
+    });
+    process.env.AUTH_TEST_USER_ID = shareeId;
+
+    const docx = await exportDocx(emptyReq("POST"), { params: { id: reportId } });
+    expect(docx.status).toBe(200);
+    const pdf = await exportPdf(emptyReq("POST"), { params: { id: reportId } });
+    expect(pdf.status).toBe(200);
+  });
+
+  it("non-sharee, non-owner gets 404 on GET", async () => {
+    const project = await makeProject();
+    seedUser("stranger@example.com");
+    process.env.AUTH_TEST_USER_ID = userRepo.findByEmail("stranger@example.com")!.id;
+    const res = await getProject(emptyReq("GET"), { params: { id: project.id } });
+    expect(res.status).toBe(404);
+  });
+
+  it("owner DELETE share → sharee then 404", async () => {
+    const project = await makeProject();
+    const shareeId = seedUser("share-f@example.com");
+    await addShare(jsonReq("POST", { email: "share-f@example.com" }), {
+      params: { id: project.id },
+    });
+    const ownerId = process.env.AUTH_TEST_USER_ID!;
+    const del = await removeShare(emptyReq("DELETE"), {
+      params: { id: project.id, userId: shareeId },
+    });
+    expect(del.status).toBe(204);
+    process.env.AUTH_TEST_USER_ID = shareeId;
+    const get = await getProject(emptyReq("GET"), { params: { id: project.id } });
+    expect(get.status).toBe(404);
+    process.env.AUTH_TEST_USER_ID = ownerId;
+  });
+
+  it("POST shares for non-existent email → 404", async () => {
+    const project = await makeProject();
+    const res = await addShare(jsonReq("POST", { email: "ghost@example.com" }), {
+      params: { id: project.id },
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toBe("No user with that email");
+  });
+
+  it("POST shares with the owner's own email → 400", async () => {
+    const project = await makeProject();
+    const res = await addShare(jsonReq("POST", { email: "test@example.com" }), {
+      params: { id: project.id },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("Owner is already implicit");
+  });
+
+  it("GET shares as sharee → 403", async () => {
+    const project = await makeProject();
+    const shareeId = seedUser("share-g@example.com");
+    await addShare(jsonReq("POST", { email: "share-g@example.com" }), {
+      params: { id: project.id },
+    });
+    process.env.AUTH_TEST_USER_ID = shareeId;
+    const res = await listShares(emptyReq("GET"), { params: { id: project.id } });
+    expect(res.status).toBe(403);
+  });
+
+  it("POST shares is idempotent on duplicate", async () => {
+    const project = await makeProject();
+    seedUser("dup-share@example.com");
+    const r1 = await addShare(jsonReq("POST", { email: "dup-share@example.com" }), {
+      params: { id: project.id },
+    });
+    expect(r1.status).toBe(200);
+    const r2 = await addShare(jsonReq("POST", { email: "dup-share@example.com" }), {
+      params: { id: project.id },
+    });
+    expect(r2.status).toBe(200);
+    const list = await listShares(emptyReq("GET"), { params: { id: project.id } });
+    const body = await list.json();
+    expect(body).toHaveLength(1);
   });
 });
 

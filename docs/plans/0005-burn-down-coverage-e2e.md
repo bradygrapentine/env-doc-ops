@@ -10,7 +10,7 @@ These pieces are sequenced for a reason: writing component tests for code we're 
 
 1. **Email service for B-042b.** Default: **Resend** — generous free tier, simple SDK, no DNS until you go above 100/day. Alternatives: SendGrid, AWS SES, Mailgun, or `nodemailer` against a local Mailtrap inbox (dev-only). The plan below assumes Resend.
 2. **E2E framework.** Default: **Playwright** — first-party browser support, Auth.js + Next.js have first-class examples, single-binary install, parallel execution. Alternative: Cypress.
-3. **Coverage scope.** Default: **95% statements, 90% branches, 90% functions on `src/lib/*` and `src/app/api/**` only**. Server components and client React components targeted at 80% (lower because their tests need testing-library + jsdom and are higher-effort). Coverage gate is enforced in CI as a hard fail.
+3. **Coverage scope.** Default: **95% statements, 90% branches, 90% functions on `src/lib/*` and `src/app/api/**` only\*\*. Server components and client React components targeted at 80% (lower because their tests need testing-library + jsdom and are higher-effort). Coverage gate is enforced in CI as a hard fail.
 4. **Sharing model for B-041 (read vs read+write).** Default: **read-only invites only for V1**. Read+write is its own follow-up because it forks the conflict-resolution story.
 
 If any default is wrong, redirect before the next batch.
@@ -30,12 +30,14 @@ Four items, sequenced as two parallel waves.
 **Schema.** None. `report_sections` already has `order INTEGER`. Add a `kind TEXT NOT NULL DEFAULT 'standard'` column. Standard sections have `kind='standard'`, user-added have `kind='custom'`. Idempotent ALTER pattern.
 
 **API.**
+
 - `PATCH /api/reports/:id/sections/order` — body `{ orderedIds: string[] }`. Validates that the set equals the report's existing section ids exactly (no additions, no removals, no duplicates). Reassigns `order` 1..N in the given order.
 - `POST /api/reports/:id/sections` — body `{ title: string, content?: string }`. Inserts a new `kind='custom'` section at the end. Returns the new section.
 - `DELETE /api/reports/:id/sections/:sectionId` — refuses (400) if `kind='standard'`. 204 otherwise.
 - All four guarded by `requireOwnedReport`.
 
 **UI.** In `ReportEditor.tsx` left sidebar:
+
 - Each section gets a drag handle. Use `@dnd-kit/core` + `@dnd-kit/sortable` (small, accessible, no jQuery). On drop, optimistically reorder, then PATCH; revert on failure.
 - A "+ Add custom section" button at the bottom.
 - Trash-can icon on custom sections only (server validates).
@@ -51,6 +53,7 @@ Four items, sequenced as two parallel waves.
 **Goal.** A user can paste/type traffic counts directly without a CSV, and edit individual rows after upload.
 
 **API.**
+
 - `POST /api/projects/:id/traffic-data/rows` — body `{ rows: ParsedTrafficRow[] }`. Appends rows. Reuses validation from `parseTrafficCsv` row-level checks (extract into `validateRow(row): RowIssue[]`).
 - `PATCH /api/projects/:id/traffic-data/rows/:rowId` — edit one row.
 - `DELETE /api/projects/:id/traffic-data/rows/:rowId` — remove one row.
@@ -71,17 +74,20 @@ Four items, sequenced as two parallel waves.
 **Email service: Resend** (default — confirm before execution).
 
 **Setup.**
+
 - `npm i resend`
 - `RESEND_API_KEY` and `EMAIL_FROM` env vars. Document in README + `.env.example`.
 - New `src/lib/email.ts` — thin wrapper with `sendVerification(to, link)` and `sendPasswordReset(to, link)`. In `NODE_ENV=test`, log to a captured array instead of calling Resend so tests don't hit the network. Flag in tests via `process.env.EMAIL_SINK = 'memory'`.
 
 **Schema.**
+
 - `users.emailVerifiedAt TEXT` — nullable, set when the verification link is hit.
 - `password_reset_tokens(token TEXT PRIMARY KEY, userId TEXT, expiresAt TEXT, usedAt TEXT)`.
 - `verification_tokens(token TEXT PRIMARY KEY, userId TEXT, expiresAt TEXT)`.
 - Tokens expire in 1h (reset) and 24h (verification).
 
 **API.**
+
 - `POST /api/auth/forgot-password` — body `{ email }`. Always returns 200 (don't leak existence). If user exists, generates a token, persists, emails the link.
 - `POST /api/auth/reset-password` — body `{ token, newPassword }`. Validates token unused + unexpired, rotates `passwordHash`, marks token used.
 - `POST /api/auth/send-verification` — auth-required. Re-sends a verification link.
@@ -89,6 +95,7 @@ Four items, sequenced as two parallel waves.
 - Signup flow: after creating user, immediately send verification email (best effort — failure doesn't block signup, surfaces a banner on /account).
 
 **UI.**
+
 - New `/forgot-password` page (email input → submit → "If an account exists, we sent a link.").
 - New `/reset-password` page (reads `?token=` from URL, new password + confirm fields).
 - `/account` page gains an "Email not verified — resend" affordance when `emailVerifiedAt` is null.
@@ -101,19 +108,23 @@ Four items, sequenced as two parallel waves.
 #### Track D — B-041 — Per-project sharing (read-only V1) — P2 · L
 
 **Schema.**
+
 - New `project_shares(projectId TEXT, userId TEXT, role TEXT NOT NULL CHECK(role='reader'), createdAt TEXT, PRIMARY KEY(projectId, userId))`. Cascade-delete on both FKs.
 
 **Ownership change.**
+
 - `requireOwnedProject` becomes `requireProjectAccess(projectId, mode: 'read' | 'write')`. Owner has both. Sharee has only 'read'. Return type unchanged for callers; the mode is checked by the helper.
 - All write-y routes (PATCH/DELETE/upload-csv/generate-report/section PATCH/section regenerate) require 'write'. All read-y routes (GET, exports) accept 'read'.
 - `projectRepo.list(userId)` becomes `listAccessible(userId)` — UNION of owned and shared. Add a `role` column to the list response so the UI can show "Shared with you" and hide write affordances.
 
 **API.**
+
 - `POST /api/projects/:id/shares` — owner-only. Body `{ email }`. Lookup user; if not exists, return 200 with a "user not found" no-op (don't leak — but realistically: with auth, leaking that "user is registered" via the share endpoint is acceptable; revisit when there's a separate org model). Insert `(projectId, userId, 'reader')`.
 - `DELETE /api/projects/:id/shares/:userId` — owner-only.
 - `GET /api/projects/:id/shares` — owner-only. Returns list of `{ userId, email, name, role }`.
 
 **UI.**
+
 - New "Share" card on the project page — list of current shares + an "Invite by email" form (owner only).
 - The project list shows a small "Shared" badge on shared rows.
 - On a shared project's detail page, hide Edit / Delete / Upload / Manual Inputs / Generate Report buttons. Reports are read-only — hide section save buttons + regenerate.
@@ -139,17 +150,17 @@ After Phase 1's features land, the codebase has roughly: pure libs (mostly cover
 
 Required cases per component:
 
-| Component                  | Tests |
-|----------------------------|-------|
-| `ProjectList`              | filter narrows by all 3 fields; each sort option orders; no-projects-yet vs no-matches empty states |
-| `ChangePasswordForm`       | validation, success, server error, mismatched confirm |
-| `ManualInputsForm`         | edit + save round-trip, error from server |
-| `EditProjectForm` (in edit/page.tsx — extract to a sibling component for testability) | validation, save, cancel |
-| `UploadCsv` / `TrafficRowsManager` | preview happy path, preview with errors, confirm gating, regenerate confirm modal |
-| `ReportEditor`             | section nav, status select, save, regenerate-section confirm flow, banner from query params |
-| `DeleteButton`             | confirm modal, fires DELETE, navigates away on 204 |
-| `SignOutButton`            | calls signOut |
-| `SignIn` / `SignUp` pages  | submit flows, error messages |
+| Component                                                                             | Tests                                                                                               |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `ProjectList`                                                                         | filter narrows by all 3 fields; each sort option orders; no-projects-yet vs no-matches empty states |
+| `ChangePasswordForm`                                                                  | validation, success, server error, mismatched confirm                                               |
+| `ManualInputsForm`                                                                    | edit + save round-trip, error from server                                                           |
+| `EditProjectForm` (in edit/page.tsx — extract to a sibling component for testability) | validation, save, cancel                                                                            |
+| `UploadCsv` / `TrafficRowsManager`                                                    | preview happy path, preview with errors, confirm gating, regenerate confirm modal                   |
+| `ReportEditor`                                                                        | section nav, status select, save, regenerate-section confirm flow, banner from query params         |
+| `DeleteButton`                                                                        | confirm modal, fires DELETE, navigates away on 204                                                  |
+| `SignOutButton`                                                                       | calls signOut                                                                                       |
+| `SignIn` / `SignUp` pages                                                             | submit flows, error messages                                                                        |
 
 **Target:** ≥30 component tests, raising overall line coverage to 95% on `src/app/**`.
 
@@ -203,6 +214,7 @@ Run coverage. For each uncovered branch/file, add a focused test or add to the `
 ### Step 2 — Test fixtures
 
 `e2e/fixtures.ts` — a Playwright fixture that:
+
 - Creates a fresh user via `/api/auth/signup` (different email per test for isolation, ID via crypto.randomUUID).
 - Signs in via `/signin` (real browser flow, full Auth.js cookie dance).
 - Returns the page authenticated.

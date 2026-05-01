@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { trafficRepo } from "@/lib/db";
 import { buildReportPdf } from "@/lib/pdf";
-import { requireOwnedReport } from "@/lib/session";
+import { requireReportAccess } from "@/lib/session";
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
-  const guard = await requireOwnedReport(params.id);
+  const guard = await requireReportAccess(params.id, "read");
   if (!guard.ok) return guard.error;
   const { project, report } = guard;
 
