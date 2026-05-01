@@ -12,6 +12,9 @@ export default defineConfig({
   workers: 1,
   use: {
     baseURL: `http://localhost:${PORT}`,
+    // Middleware enforces same-origin on state-changing API calls.
+    // Playwright APIRequestContext doesn't always send Origin, so set it.
+    extraHTTPHeaders: { Origin: `http://localhost:${PORT}` },
     trace: "on-first-retry",
   },
   projects: [
