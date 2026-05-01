@@ -50,6 +50,48 @@ describe("projectRepo.update", () => {
   });
 });
 
+describe("projectRepo manualInputs", () => {
+  it("create round-trips manualInputs through get", () => {
+    const created = projectRepo.create({
+      ...baseInput,
+      manualInputs: {
+        growthRate: "1.5%",
+        tripGenAssumptions: "ITE 220",
+      },
+    });
+    const got = projectRepo.get(created.id);
+    expect(got!.manualInputs).toEqual({
+      growthRate: "1.5%",
+      tripGenAssumptions: "ITE 220",
+    });
+  });
+
+  it("update sets manualInputs JSON", () => {
+    const created = projectRepo.create(baseInput);
+    expect(created.manualInputs).toBeUndefined();
+    const updated = projectRepo.update(created.id, {
+      manualInputs: {
+        engineerConclusions: "Looks fine.",
+      },
+    });
+    expect(updated!.manualInputs).toEqual({ engineerConclusions: "Looks fine." });
+    const got = projectRepo.get(created.id);
+    expect(got!.manualInputs).toEqual({ engineerConclusions: "Looks fine." });
+  });
+
+  it("update with manualInputs: undefined clears the column", () => {
+    const created = projectRepo.create({
+      ...baseInput,
+      manualInputs: { tripGenAssumptions: "x" },
+    });
+    expect(created.manualInputs).toEqual({ tripGenAssumptions: "x" });
+    const cleared = projectRepo.update(created.id, { manualInputs: undefined });
+    expect(cleared!.manualInputs).toBeUndefined();
+    const got = projectRepo.get(created.id);
+    expect(got!.manualInputs).toBeUndefined();
+  });
+});
+
 describe("projectRepo.delete", () => {
   it("returns false for an unknown id", () => {
     expect(projectRepo.delete("nope")).toBe(false);

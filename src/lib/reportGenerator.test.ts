@@ -84,4 +84,34 @@ describe("generateReportSections", () => {
     const sa = sections.find((s) => s.id === "study-area")!;
     expect(sa.content).toContain("no intersections imported");
   });
+
+  it("uses canned trip-generation and conclusion text when manualInputs is empty", () => {
+    const sections = generateReportSections(project, []);
+    const tg = sections.find((s) => s.id === "trip-generation")!;
+    const c = sections.find((s) => s.id === "conclusion")!;
+    expect(tg.content).toContain("prepared based on the proposed land use");
+    expect(c.content).toContain("preliminary evaluation of traffic conditions");
+  });
+
+  it("overrides trip-generation content when tripGenAssumptions is set", () => {
+    const p2: Project = {
+      ...project,
+      manualInputs: { tripGenAssumptions: "Custom ITE 220 trip gen text." },
+    };
+    const sections = generateReportSections(p2, []);
+    const tg = sections.find((s) => s.id === "trip-generation")!;
+    expect(tg.content).toBe("Custom ITE 220 trip gen text.");
+    expect(tg.machineBaseline).toBe("Custom ITE 220 trip gen text.");
+  });
+
+  it("overrides conclusion content when engineerConclusions is set", () => {
+    const p2: Project = {
+      ...project,
+      manualInputs: { engineerConclusions: "Engineer signed-off conclusion." },
+    };
+    const sections = generateReportSections(p2, []);
+    const c = sections.find((s) => s.id === "conclusion")!;
+    expect(c.content).toBe("Engineer signed-off conclusion.");
+    expect(c.machineBaseline).toBe("Engineer signed-off conclusion.");
+  });
 });
