@@ -13,6 +13,7 @@ Every backlog item touches either CSV parsing, the metrics engine, or the report
 ## Scope
 
 In:
+
 - Vitest as the test runner (faster than Jest, native ESM, no extra Babel config).
 - Unit tests for `src/lib/csv.ts`, `src/lib/reportGenerator.ts`, `src/lib/docx.ts`.
 - Route-handler tests for the 7 API routes — exercise the handlers directly with a fake `Request`, against a temp SQLite DB.
@@ -21,6 +22,7 @@ In:
 - `npm run test` and `npm run test:watch` scripts.
 
 Out (separate stories):
+
 - E2E browser tests (Playwright) — defer to a later plan once UI stabilizes.
 - Coverage thresholds — measure first, set thresholds in a follow-up.
 - Visual regression / screenshot tests.
@@ -57,6 +59,7 @@ Currently `src/lib/db.ts` hard-codes `process.cwd() + "/data/envdocos.db"`. Add 
 ### Step 3 — Unit tests for `lib/csv.ts`
 
 Cases:
+
 - Happy path: 3 rows, all required columns, mixed AM/PM → returns `{ ok: true, rows.length === 3 }`.
 - Missing column → `{ ok: false }` and the error names the missing column.
 - Invalid `period` → error mentions the row number (the user-facing row, i.e. 2 = first data row) and the bad value.
@@ -70,6 +73,7 @@ Cases:
 ### Step 4 — Unit tests for `lib/reportGenerator.ts`
 
 Cases:
+
 - `calculateMetrics([])` returns zeros and empty `intersections`.
 - `calculateMetrics` correctly sums per-intersection totals across periods (use the sample CSV rows).
 - `generateReportSections` returns 8 sections in order 1-8 with `status: 'draft'`.
@@ -82,6 +86,7 @@ Cases:
 ### Step 5 — Unit tests for `lib/docx.ts`
 
 Cases:
+
 - `buildReportDocx(project, report)` returns a non-empty Buffer.
 - The buffer is a valid ZIP (DOCX is a ZIP) — assert `buf.slice(0,2)` is `0x504b` (`PK`).
 - Use `unzip` (or just `Bun.file`/`adm-zip` dev dep — pick `jszip`, already pulled in by `docx`) to extract `word/document.xml` and assert each section title appears in the XML.
@@ -93,10 +98,13 @@ Cases:
 Build a small helper `test/route.ts`:
 
 ```ts
-export function makeReq(method: string, body?: unknown, headers: Record<string,string> = {}) {
+export function makeReq(method: string, body?: unknown, headers: Record<string, string> = {}) {
   return new Request("http://test.local", {
     method,
-    headers: body && typeof body === "object" ? { "content-type": "application/json", ...headers } : headers,
+    headers:
+      body && typeof body === "object"
+        ? { "content-type": "application/json", ...headers }
+        : headers,
     body: body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body),
   });
 }
@@ -104,15 +112,15 @@ export function makeReq(method: string, body?: unknown, headers: Record<string,s
 
 For each route, write `route.test.ts` next to it (or in `test/api/`). Cases per route:
 
-| Route | Happy path | Failure path |
-|---|---|---|
-| `POST /api/projects` | Valid body → 201, returns project with id | Missing `name` → 400 |
-| `GET /api/projects/:id` | Existing project → 200 | Unknown id → 404 |
-| `POST /api/projects/:id/traffic-data` | Valid CSV → 200 with `rowsImported` | Missing column → 400 |
-| `POST /api/projects/:id/generate-report` | With rows → 200, 8 sections | No rows → 400 |
-| `GET /api/reports/:id` | Existing → 200 with sections | Unknown → 404 |
-| `PATCH /api/reports/:id/sections/:sectionId` | Valid patch → 200 | Bad status → 400 |
-| `POST /api/reports/:id/export-docx` | → 200 with `application/vnd.openxml…` content-type and PK-prefixed body | Unknown report → 404 |
+| Route                                        | Happy path                                                              | Failure path         |
+| -------------------------------------------- | ----------------------------------------------------------------------- | -------------------- |
+| `POST /api/projects`                         | Valid body → 201, returns project with id                               | Missing `name` → 400 |
+| `GET /api/projects/:id`                      | Existing project → 200                                                  | Unknown id → 404     |
+| `POST /api/projects/:id/traffic-data`        | Valid CSV → 200 with `rowsImported`                                     | Missing column → 400 |
+| `POST /api/projects/:id/generate-report`     | With rows → 200, 8 sections                                             | No rows → 400        |
+| `GET /api/reports/:id`                       | Existing → 200 with sections                                            | Unknown → 404        |
+| `PATCH /api/reports/:id/sections/:sectionId` | Valid patch → 200                                                       | Bad status → 400     |
+| `POST /api/reports/:id/export-docx`          | → 200 with `application/vnd.openxml…` content-type and PK-prefixed body | Unknown report → 404 |
 
 **Verify:** All 14 cases pass; total suite runs in <5 s locally.
 

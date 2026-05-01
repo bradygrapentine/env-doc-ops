@@ -12,12 +12,12 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 ## §0 Status board
 
-| State        | Count |
-|--------------|-------|
-| Ready        | 8     |
-| In progress  | 0     |
-| Blocked      | 0     |
-| Shipped      | 8     |
+| State       | Count |
+| ----------- | ----- |
+| Ready       | 8     |
+| In progress | 0     |
+| Blocked     | 0     |
+| Shipped     | 8     |
 
 ---
 
@@ -40,7 +40,6 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
   Drag-to-reorder and add a freeform "Custom" section. Schema already has `order`.
 
 ### Project lifecycle
-
 
 ### Data input
 

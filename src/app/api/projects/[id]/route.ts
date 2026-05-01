@@ -7,7 +7,15 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return NextResponse.json(project);
 }
 
-const EDITABLE = ["name", "location", "jurisdiction", "clientName", "projectType", "developmentSummary", "preparedBy"] as const;
+const EDITABLE = [
+  "name",
+  "location",
+  "jurisdiction",
+  "clientName",
+  "projectType",
+  "developmentSummary",
+  "preparedBy",
+] as const;
 type EditableKey = (typeof EDITABLE)[number];
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {

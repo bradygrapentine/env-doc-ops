@@ -20,15 +20,54 @@ const report: Report = {
   createdAt: "2026-04-30T00:00:00Z",
   updatedAt: "2026-04-30T00:00:00Z",
   sections: [
-    { id: "executive-summary", title: "Executive Summary", order: 1, content: "Body of exec summary.", status: "draft", machineBaseline: "Body of exec summary." },
-    { id: "existing-conditions", title: "Existing Conditions", order: 4, content: "Existing conditions body.", status: "draft", machineBaseline: "Existing conditions body." },
-    { id: "conclusion", title: "Conclusion", order: 8, content: "Body of conclusion.", status: "draft", machineBaseline: "Body of conclusion." },
+    {
+      id: "executive-summary",
+      title: "Executive Summary",
+      order: 1,
+      content: "Body of exec summary.",
+      status: "draft",
+      machineBaseline: "Body of exec summary.",
+    },
+    {
+      id: "existing-conditions",
+      title: "Existing Conditions",
+      order: 4,
+      content: "Existing conditions body.",
+      status: "draft",
+      machineBaseline: "Existing conditions body.",
+    },
+    {
+      id: "conclusion",
+      title: "Conclusion",
+      order: 8,
+      content: "Body of conclusion.",
+      status: "draft",
+      machineBaseline: "Body of conclusion.",
+    },
   ],
 };
 
 const rows: TrafficCountRow[] = [
-  { id: "1", projectId: "p1", intersection: "Beta St at 1st", period: "AM", approach: "NB", inbound: 10, outbound: 20, total: 30 },
-  { id: "2", projectId: "p1", intersection: "Alpha Ave at 2nd", period: "PM", approach: "EB", inbound: 100, outbound: 200, total: 300 },
+  {
+    id: "1",
+    projectId: "p1",
+    intersection: "Beta St at 1st",
+    period: "AM",
+    approach: "NB",
+    inbound: 10,
+    outbound: 20,
+    total: 30,
+  },
+  {
+    id: "2",
+    projectId: "p1",
+    intersection: "Alpha Ave at 2nd",
+    period: "PM",
+    approach: "EB",
+    inbound: 100,
+    outbound: 200,
+    total: 300,
+  },
 ];
 
 async function getXml(project: Project, report: Report, rows: TrafficCountRow[] = []) {

@@ -20,9 +20,7 @@ export default function GlobalError({
             padding: "1.5rem",
           }}
         >
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0 }}>
-            Something went wrong.
-          </h1>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 600, margin: 0 }}>Something went wrong.</h1>
           {error.message ? (
             <pre
               style={{

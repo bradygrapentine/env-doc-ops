@@ -5,13 +5,22 @@ import { useState } from "react";
 
 type SectionRef = { id: string; title: string };
 
-export default function UploadCsv({ projectId, initialRowCount }: { projectId: string; initialRowCount: number }) {
+export default function UploadCsv({
+  projectId,
+  initialRowCount,
+}: {
+  projectId: string;
+  initialRowCount: number;
+}) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState<"idle" | "uploading" | "generating">("idle");
   const [error, setError] = useState<string | null>(null);
   const [rowsImported, setRowsImported] = useState<number>(initialRowCount);
-  const [confirmation, setConfirmation] = useState<{ refreshed: SectionRef[]; preserved: SectionRef[] } | null>(null);
+  const [confirmation, setConfirmation] = useState<{
+    refreshed: SectionRef[];
+    preserved: SectionRef[];
+  } | null>(null);
 
   async function upload() {
     if (!file) return;
@@ -38,7 +47,9 @@ export default function UploadCsv({ projectId, initialRowCount }: { projectId: s
   async function startGenerate() {
     setBusy("generating");
     setError(null);
-    const res = await fetch(`/api/projects/${projectId}/generate-report/preview`, { method: "POST" });
+    const res = await fetch(`/api/projects/${projectId}/generate-report/preview`, {
+      method: "POST",
+    });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       setError(j.error ?? "Failed to preview regeneration");
@@ -105,9 +116,12 @@ export default function UploadCsv({ projectId, initialRowCount }: { projectId: s
         <div className="rounded border bg-amber-50 p-4 text-sm space-y-3">
           <div>
             <strong>{confirmation.preserved.length}</strong> section
-            {confirmation.preserved.length === 1 ? "" : "s"} will be preserved (you&apos;ve edited or marked them):
+            {confirmation.preserved.length === 1 ? "" : "s"} will be preserved (you&apos;ve edited
+            or marked them):
             <ul className="list-disc pl-5 mt-1 text-amber-900">
-              {confirmation.preserved.map((s) => <li key={s.id}>{s.title}</li>)}
+              {confirmation.preserved.map((s) => (
+                <li key={s.id}>{s.title}</li>
+              ))}
             </ul>
           </div>
           <div>
@@ -115,7 +129,10 @@ export default function UploadCsv({ projectId, initialRowCount }: { projectId: s
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => { setConfirmation(null); runGenerate(); }}
+              onClick={() => {
+                setConfirmation(null);
+                runGenerate();
+              }}
               className="rounded bg-black text-white px-3 py-1.5 text-sm hover:bg-gray-800"
             >
               Refresh

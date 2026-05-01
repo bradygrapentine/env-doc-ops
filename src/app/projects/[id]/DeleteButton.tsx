@@ -3,7 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export default function DeleteButton({ projectId, projectName }: { projectId: string; projectName: string }) {
+export default function DeleteButton({
+  projectId,
+  projectName,
+}: {
+  projectId: string;
+  projectName: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -37,7 +43,8 @@ export default function DeleteButton({ projectId, projectName }: { projectId: st
           <div className="bg-white rounded shadow-lg max-w-md w-full p-6">
             <h2 className="font-medium text-lg mb-3">Delete project?</h2>
             <p className="text-sm text-gray-700 mb-4">
-              Delete {projectName}? This will also delete its uploaded CSV rows and any generated report. This cannot be undone.
+              Delete {projectName}? This will also delete its uploaded CSV rows and any generated
+              report. This cannot be undone.
             </p>
             {error && <div className="text-sm text-red-600 mb-3">{error}</div>}
             <div className="flex justify-end gap-2">

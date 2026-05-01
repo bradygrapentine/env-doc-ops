@@ -41,7 +41,12 @@ export function generateReportSections(project: Project, rows: TrafficCountRow[]
   const list = m.intersections.length ? m.intersections.join(", ") : "no intersections imported";
 
   const draft = (id: string, title: string, order: number, content: string): ReportSection => ({
-    id, title, order, content, status: "draft", machineBaseline: content,
+    id,
+    title,
+    order,
+    content,
+    status: "draft",
+    machineBaseline: content,
   });
 
   return [

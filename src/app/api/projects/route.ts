@@ -9,7 +9,13 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
 
-  const required = ["name", "location", "jurisdiction", "projectType", "developmentSummary"] as const;
+  const required = [
+    "name",
+    "location",
+    "jurisdiction",
+    "projectType",
+    "developmentSummary",
+  ] as const;
   for (const key of required) {
     if (!body[key] || typeof body[key] !== "string") {
       return NextResponse.json({ error: `Missing or invalid field: ${key}` }, { status: 400 });

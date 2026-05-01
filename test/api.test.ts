@@ -5,7 +5,11 @@ import { resetDb } from "./db";
 import { jsonReq, textReq, emptyReq } from "./routes";
 
 import { POST as createProject, GET as listProjects } from "@/app/api/projects/route";
-import { GET as getProject, PATCH as patchProject, DELETE as deleteProject } from "@/app/api/projects/[id]/route";
+import {
+  GET as getProject,
+  PATCH as patchProject,
+  DELETE as deleteProject,
+} from "@/app/api/projects/[id]/route";
 import { POST as uploadCsv } from "@/app/api/projects/[id]/traffic-data/route";
 import { POST as generateReport } from "@/app/api/projects/[id]/generate-report/route";
 import { POST as previewReport } from "@/app/api/projects/[id]/generate-report/preview/route";

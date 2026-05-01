@@ -9,7 +9,10 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   const rows = trafficRepo.listByProject(params.id);
   if (rows.length === 0) {
-    return NextResponse.json({ error: "Upload traffic count CSV before generating a report" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Upload traffic count CSV before generating a report" },
+      { status: 400 },
+    );
   }
 
   const fresh = generateReportSections(project, rows);

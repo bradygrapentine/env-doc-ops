@@ -17,6 +17,7 @@ The product's wedge is "60-80% of a draft." A draft without tables is closer to 
 ## Scope
 
 In:
+
 - A standalone cover page with project name, location, jurisdiction, prepared-by, date.
 - A heading hierarchy: `Title` → `Heading 1` (numbered sections) → `Heading 2` (sub-blocks) → body paragraphs.
 - A traffic counts table inserted into the **Existing Conditions** section: one row per `(intersection, period)` group, columns `Intersection`, `Period`, `Approach`, `Inbound`, `Outbound`, `Total`.
@@ -25,6 +26,7 @@ In:
 - Document properties (title, creator) populated.
 
 Out (separate stories):
+
 - Page numbers / running headers (B-014).
 - Embedded figures / maps (out — not the product).
 - PDF export (B-012, separate plan).
@@ -79,7 +81,7 @@ Use `docx`'s `PageBreakBefore` paragraph property on the next paragraph (or inse
 Add `buildTrafficTable(rows)` returning a `Table` from `docx`. Sort rows by `(intersection, period)`. Columns:
 
 | Intersection | Period | Approach | Inbound | Outbound | Total |
-|---|---|---|---|---|---|
+| ------------ | ------ | -------- | ------- | -------- | ----- |
 
 Header row uses `TableRow` + `TableCell` with bold `TextRun`. `WidthType.PERCENTAGE` so Word sizes columns. Apply borders via `BorderStyle.SINGLE`.
 
@@ -89,10 +91,10 @@ Header row uses `TableRow` + `TableCell` with bold `TextRun`. `WidthType.PERCENT
 
 Compute peak from existing `calculateMetrics(rows)` (already in `lib/reportGenerator.ts`). Render a 2-row, 3-col table:
 
-| Period | Intersection | Total |
-|---|---|---|
-| AM Peak | … | … |
-| PM Peak | … | … |
+| Period  | Intersection | Total |
+| ------- | ------------ | ----- |
+| AM Peak | …            | …     |
+| PM Peak | …            | …     |
 
 If `metrics.highestAmIntersection` is undefined, render a single row "No AM-period data."
 
@@ -115,7 +117,7 @@ Replace the current `Heading 1` for the title with `Title`. Section headings sta
 
 ### Step 7 — Document properties
 
-Set `creator: "EnvDocOS Traffic V1"` and `title: \`Traffic Impact Report — ${project.name}\`` in the `Document` constructor `creator` / `title` fields. These show up in Word's File → Info pane.
+Set `creator: "EnvDocOS Traffic V1"` and `title: \`Traffic Impact Report — ${project.name}\``in the`Document`constructor`creator`/`title` fields. These show up in Word's File → Info pane.
 
 ### Step 8 — Update unit test
 

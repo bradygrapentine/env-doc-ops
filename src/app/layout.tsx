@@ -13,7 +13,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <header className="border-b bg-white">
           <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
-            <Link href="/" className="font-semibold text-lg">EnvDocOS Traffic V1</Link>
+            <Link href="/" className="font-semibold text-lg">
+              EnvDocOS Traffic V1
+            </Link>
             <nav className="text-sm text-gray-600 flex gap-4">
               <Link href="/">Projects</Link>
               <Link href="/projects/new">New Project</Link>

@@ -42,10 +42,7 @@ function buildCoverPage(project: Project, report: Report): (Paragraph | Table)[]
       ([label, value]) =>
         new Paragraph({
           spacing: { after: 80 },
-          children: [
-            new TextRun({ text: `${label}: `, bold: true }),
-            new TextRun({ text: value }),
-          ],
+          children: [new TextRun({ text: `${label}: `, bold: true }), new TextRun({ text: value })],
         }),
     ),
     new Paragraph({ children: [new PageBreak()] }),
@@ -156,7 +153,9 @@ export async function buildReportDocx(
       }),
     );
     for (const para of section.content.split(/\n+/)) {
-      children.push(new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: para })] }));
+      children.push(
+        new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: para })] }),
+      );
     }
 
     if (section.id === "existing-conditions" && rows.length > 0) {

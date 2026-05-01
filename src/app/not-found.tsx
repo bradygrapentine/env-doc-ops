@@ -9,10 +9,7 @@ export default function NotFound() {
           This might be a stale link, or the project may have been removed.
         </p>
         <div className="mt-6">
-          <Link
-            href="/"
-            className="inline-block rounded bg-black px-4 py-2 text-white"
-          >
+          <Link href="/" className="inline-block rounded bg-black px-4 py-2 text-white">
             Back to projects
           </Link>
         </div>

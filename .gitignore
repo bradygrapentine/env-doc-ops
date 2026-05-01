@@ -12,3 +12,5 @@ data/*.db-wal
 next-env.d.ts
 tsconfig.tsbuildinfo
 .memsearch/
+.claude/
+coverage/

@@ -4,7 +4,10 @@ import type { SectionStatus } from "@/lib/types";
 
 const STATUSES: SectionStatus[] = ["draft", "reviewed", "final"];
 
-export async function PATCH(req: Request, { params }: { params: { id: string; sectionId: string } }) {
+export async function PATCH(
+  req: Request,
+  { params }: { params: { id: string; sectionId: string } },
+) {
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
 
@@ -13,7 +16,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string; se
   if (typeof body.title === "string") patch.title = body.title;
   if (body.status !== undefined) {
     if (!STATUSES.includes(body.status)) {
-      return NextResponse.json({ error: `Invalid status. Expected one of ${STATUSES.join(", ")}.` }, { status: 400 });
+      return NextResponse.json(
+        { error: `Invalid status. Expected one of ${STATUSES.join(", ")}.` },
+        { status: 400 },
+      );
     }
     patch.status = body.status;
   }

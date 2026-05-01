@@ -19,12 +19,14 @@ Engineers iterate. They upload, generate, edit, find a CSV typo, fix it, regener
 ## Scope
 
 In:
+
 - Persist a "machine-generated baseline" for each section alongside the editable content.
 - On regenerate: for each section, decide **keep user content** vs **overwrite with new machine output** based on a clear rule set.
 - Surface a per-section "regenerated" / "preserved (user-edited)" badge in the editor for one navigation cycle so the user can see what changed.
 - A dry-run preview endpoint so the UI can show "X sections will be refreshed, Y preserved" before the user confirms.
 
 Out (separate stories):
+
 - Per-section regenerate button (B-013) — composes with this but is a separate UI affordance.
 - Three-way merge / textual diff inside a single section (deferred — too much UX surface for V1).
 - Undo / version history (deferred — interesting but out of scope).

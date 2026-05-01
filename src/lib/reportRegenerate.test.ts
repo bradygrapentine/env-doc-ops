@@ -11,7 +11,12 @@ const fresh = (id: string, content: string): ReportSection => ({
   machineBaseline: content,
 });
 
-const existing = (id: string, content: string, baseline: string, status: SectionStatus = "draft"): ReportSection => ({
+const existing = (
+  id: string,
+  content: string,
+  baseline: string,
+  status: SectionStatus = "draft",
+): ReportSection => ({
   id,
   title: id,
   order: 1,
@@ -29,10 +34,7 @@ describe("planRegenerate", () => {
   });
 
   it("refreshes a draft section that was not edited", () => {
-    const result = planRegenerate(
-      [existing("a", "old", "old", "draft")],
-      [fresh("a", "new")],
-    );
+    const result = planRegenerate([existing("a", "old", "old", "draft")], [fresh("a", "new")]);
     expect(result.refreshed).toEqual(["a"]);
     expect(result.preserved).toEqual([]);
     expect(result.merged[0].content).toBe("new");
@@ -40,10 +42,7 @@ describe("planRegenerate", () => {
   });
 
   it("preserves a draft section that was edited", () => {
-    const result = planRegenerate(
-      [existing("a", "edited", "old", "draft")],
-      [fresh("a", "new")],
-    );
+    const result = planRegenerate([existing("a", "edited", "old", "draft")], [fresh("a", "new")]);
     expect(result.preserved).toEqual(["a"]);
     expect(result.refreshed).toEqual([]);
     expect(result.merged[0].content).toBe("edited");
@@ -51,10 +50,7 @@ describe("planRegenerate", () => {
   });
 
   it("preserves a reviewed section even if unedited", () => {
-    const result = planRegenerate(
-      [existing("a", "old", "old", "reviewed")],
-      [fresh("a", "new")],
-    );
+    const result = planRegenerate([existing("a", "old", "old", "reviewed")], [fresh("a", "new")]);
     expect(result.preserved).toEqual(["a"]);
     expect(result.merged[0].content).toBe("old");
     expect(result.merged[0].status).toBe("reviewed");
@@ -62,10 +58,7 @@ describe("planRegenerate", () => {
   });
 
   it("preserves a final + edited section", () => {
-    const result = planRegenerate(
-      [existing("a", "edited", "old", "final")],
-      [fresh("a", "new")],
-    );
+    const result = planRegenerate([existing("a", "edited", "old", "final")], [fresh("a", "new")]);
     expect(result.preserved).toEqual(["a"]);
     expect(result.merged[0].status).toBe("final");
     expect(result.merged[0].content).toBe("edited");
@@ -80,7 +73,10 @@ describe("planRegenerate", () => {
   });
 
   it("a brand-new fresh section (no prior id) is refreshed", () => {
-    const result = planRegenerate([existing("a", "old", "old")], [fresh("a", "new"), fresh("b", "B")]);
+    const result = planRegenerate(
+      [existing("a", "old", "old")],
+      [fresh("a", "new"), fresh("b", "B")],
+    );
     expect(result.refreshed).toContain("b");
   });
 

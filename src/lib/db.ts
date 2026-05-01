@@ -1,7 +1,14 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
-import type { Project, TrafficCountRow, Report, ReportSection, Period, SectionStatus } from "./types";
+import type {
+  Project,
+  TrafficCountRow,
+  Report,
+  ReportSection,
+  Period,
+  SectionStatus,
+} from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 
@@ -84,7 +91,9 @@ export function closeDb(): void {
   }
 }
 
-const uid = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36));
+const uid = () =>
+  globalThis.crypto?.randomUUID?.() ??
+  Math.random().toString(36).slice(2) + Date.now().toString(36);
 const now = () => new Date().toISOString();
 
 export const projectRepo = {
@@ -96,21 +105,35 @@ export const projectRepo = {
   },
   create(input: Omit<Project, "id" | "createdAt">): Project {
     const project: Project = { ...input, id: uid(), createdAt: now() };
-    db().prepare(`
+    db()
+      .prepare(
+        `
       INSERT INTO projects (id, name, location, jurisdiction, clientName, projectType, developmentSummary, preparedBy, createdAt)
       VALUES (@id, @name, @location, @jurisdiction, @clientName, @projectType, @developmentSummary, @preparedBy, @createdAt)
-    `).run({
-      ...project,
-      clientName: project.clientName ?? null,
-      preparedBy: project.preparedBy ?? null,
-    });
+    `,
+      )
+      .run({
+        ...project,
+        clientName: project.clientName ?? null,
+        preparedBy: project.preparedBy ?? null,
+      });
     return project;
   },
   update(id: string, patch: Partial<Omit<Project, "id" | "createdAt">>): Project | undefined {
     const conn = db();
-    const existing = conn.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined;
+    const existing = conn.prepare("SELECT * FROM projects WHERE id = ?").get(id) as
+      | Project
+      | undefined;
     if (!existing) return undefined;
-    const allowed = ["name", "location", "jurisdiction", "clientName", "projectType", "developmentSummary", "preparedBy"] as const;
+    const allowed = [
+      "name",
+      "location",
+      "jurisdiction",
+      "clientName",
+      "projectType",
+      "developmentSummary",
+      "preparedBy",
+    ] as const;
     const fields: string[] = [];
     const values: (string | null)[] = [];
     for (const key of allowed) {
@@ -132,9 +155,14 @@ export const projectRepo = {
 
 export const trafficRepo = {
   listByProject(projectId: string): TrafficCountRow[] {
-    return db().prepare("SELECT * FROM traffic_counts WHERE projectId = ?").all(projectId) as TrafficCountRow[];
+    return db()
+      .prepare("SELECT * FROM traffic_counts WHERE projectId = ?")
+      .all(projectId) as TrafficCountRow[];
   },
-  replaceForProject(projectId: string, rows: Omit<TrafficCountRow, "id" | "projectId">[]): TrafficCountRow[] {
+  replaceForProject(
+    projectId: string,
+    rows: Omit<TrafficCountRow, "id" | "projectId">[],
+  ): TrafficCountRow[] {
     const conn = db();
     const insert = conn.prepare(`
       INSERT INTO traffic_counts (id, projectId, intersection, period, approach, inbound, outbound, total)
@@ -163,19 +191,25 @@ export const reportRepo = {
       | undefined;
     if (!row) return undefined;
     const sections = conn
-      .prepare(`SELECT id, title, "order", content, status, machineBaseline FROM report_sections WHERE reportId = ? ORDER BY "order"`)
+      .prepare(
+        `SELECT id, title, "order", content, status, machineBaseline FROM report_sections WHERE reportId = ? ORDER BY "order"`,
+      )
       .all(id) as ReportSection[];
     return { ...row, sections };
   },
   getByProject(projectId: string): Report | undefined {
     const conn = db();
-    const row = conn.prepare("SELECT id FROM reports WHERE projectId = ?").get(projectId) as { id: string } | undefined;
+    const row = conn.prepare("SELECT id FROM reports WHERE projectId = ?").get(projectId) as
+      | { id: string }
+      | undefined;
     if (!row) return undefined;
     return reportRepo.get(row.id);
   },
   upsertForProject(projectId: string, sections: ReportSection[]): Report {
     const conn = db();
-    const existing = conn.prepare("SELECT id FROM reports WHERE projectId = ?").get(projectId) as { id: string } | undefined;
+    const existing = conn.prepare("SELECT id FROM reports WHERE projectId = ?").get(projectId) as
+      | { id: string }
+      | undefined;
     const reportId = existing?.id ?? uid();
     const ts = now();
     const tx = conn.transaction(() => {
@@ -183,7 +217,9 @@ export const reportRepo = {
         conn.prepare("UPDATE reports SET updatedAt = ? WHERE id = ?").run(ts, reportId);
         conn.prepare("DELETE FROM report_sections WHERE reportId = ?").run(reportId);
       } else {
-        conn.prepare("INSERT INTO reports (id, projectId, createdAt, updatedAt) VALUES (?, ?, ?, ?)").run(reportId, projectId, ts, ts);
+        conn
+          .prepare("INSERT INTO reports (id, projectId, createdAt, updatedAt) VALUES (?, ?, ?, ?)")
+          .run(reportId, projectId, ts, ts);
       }
       const insertSection = conn.prepare(`
         INSERT INTO report_sections (id, reportId, title, "order", content, status, machineBaseline)
@@ -194,15 +230,30 @@ export const reportRepo = {
     tx();
     return reportRepo.get(reportId)!;
   },
-  updateSection(reportId: string, sectionId: string, patch: Partial<Pick<ReportSection, "content" | "status" | "title">>): Report | undefined {
+  updateSection(
+    reportId: string,
+    sectionId: string,
+    patch: Partial<Pick<ReportSection, "content" | "status" | "title">>,
+  ): Report | undefined {
     const conn = db();
     const fields: string[] = [];
     const values: (string | SectionStatus)[] = [];
-    if (patch.content !== undefined) { fields.push("content = ?"); values.push(patch.content); }
-    if (patch.status !== undefined) { fields.push("status = ?"); values.push(patch.status); }
-    if (patch.title !== undefined) { fields.push("title = ?"); values.push(patch.title); }
+    if (patch.content !== undefined) {
+      fields.push("content = ?");
+      values.push(patch.content);
+    }
+    if (patch.status !== undefined) {
+      fields.push("status = ?");
+      values.push(patch.status);
+    }
+    if (patch.title !== undefined) {
+      fields.push("title = ?");
+      values.push(patch.title);
+    }
     if (fields.length === 0) return reportRepo.get(reportId);
-    conn.prepare(`UPDATE report_sections SET ${fields.join(", ")} WHERE reportId = ? AND id = ?`).run(...values, reportId, sectionId);
+    conn
+      .prepare(`UPDATE report_sections SET ${fields.join(", ")} WHERE reportId = ? AND id = ?`)
+      .run(...values, reportId, sectionId);
     conn.prepare("UPDATE reports SET updatedAt = ? WHERE id = ?").run(now(), reportId);
     return reportRepo.get(reportId);
   },

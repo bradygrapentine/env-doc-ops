@@ -26,10 +26,7 @@ export default function Error({
           >
             Try again
           </button>
-          <Link
-            href="/"
-            className="rounded border px-4 py-2"
-          >
+          <Link href="/" className="rounded border px-4 py-2">
             Back to projects
           </Link>
         </div>

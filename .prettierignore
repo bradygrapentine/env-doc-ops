@@ -1,0 +1,7 @@
+node_modules
+.next
+data
+coverage
+package-lock.json
+envdocos_v1_retry
+envdocos_traffic_v1_package_full

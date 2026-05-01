@@ -40,8 +40,19 @@ export default function NewProjectPage() {
         <Field name="location" label="Location" required />
         <Field name="jurisdiction" label="Jurisdiction" required />
         <Field name="clientName" label="Client" />
-        <Field name="projectType" label="Project type" required placeholder="e.g. Mixed-use development" />
-        <Field name="developmentSummary" label="Development summary" required textarea placeholder="e.g. 120 residential units and 15,000 sq ft of retail" />
+        <Field
+          name="projectType"
+          label="Project type"
+          required
+          placeholder="e.g. Mixed-use development"
+        />
+        <Field
+          name="developmentSummary"
+          label="Development summary"
+          required
+          textarea
+          placeholder="e.g. 120 residential units and 15,000 sq ft of retail"
+        />
         <Field name="preparedBy" label="Prepared by" />
         {error && <div className="text-sm text-red-600">{error}</div>}
         <button
@@ -57,17 +68,39 @@ export default function NewProjectPage() {
 }
 
 function Field({
-  name, label, required, placeholder, textarea,
-}: { name: string; label: string; required?: boolean; placeholder?: string; textarea?: boolean }) {
+  name,
+  label,
+  required,
+  placeholder,
+  textarea,
+}: {
+  name: string;
+  label: string;
+  required?: boolean;
+  placeholder?: string;
+  textarea?: boolean;
+}) {
   return (
     <label className="block">
-      <span className="block text-sm font-medium mb-1">{label}{required && <span className="text-red-500"> *</span>}</span>
+      <span className="block text-sm font-medium mb-1">
+        {label}
+        {required && <span className="text-red-500"> *</span>}
+      </span>
       {textarea ? (
-        <textarea name={name} required={required} placeholder={placeholder}
-          className="w-full rounded border px-3 py-2 text-sm" rows={3} />
+        <textarea
+          name={name}
+          required={required}
+          placeholder={placeholder}
+          className="w-full rounded border px-3 py-2 text-sm"
+          rows={3}
+        />
       ) : (
-        <input name={name} required={required} placeholder={placeholder}
-          className="w-full rounded border px-3 py-2 text-sm" />
+        <input
+          name={name}
+          required={required}
+          placeholder={placeholder}
+          className="w-full rounded border px-3 py-2 text-sm"
+        />
       )}
     </label>
   );
