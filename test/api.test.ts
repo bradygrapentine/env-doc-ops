@@ -33,7 +33,10 @@ import { POST as exportDocx } from "@/app/api/reports/[id]/export-docx/route";
 import { POST as exportPdf } from "@/app/api/reports/[id]/export-pdf/route";
 import { POST as signupRoute } from "@/app/api/auth/signup/route";
 import { POST as changeEmailRoute } from "@/app/api/auth/change-email/route";
-import { GET as confirmEmailChangeRoute } from "@/app/api/auth/confirm-email-change/route";
+import {
+  GET as peekEmailChangeRoute,
+  POST as confirmEmailChangeRoute,
+} from "@/app/api/auth/confirm-email-change/route";
 import { DELETE as deleteAccountRoute } from "@/app/api/auth/account/route";
 import { GET as listAuditRoute } from "@/app/api/projects/[id]/audit/route";
 import { POST as changePasswordRoute } from "@/app/api/auth/change-password/route";
@@ -1379,19 +1382,65 @@ describe("Email change", () => {
     expect(emails).toHaveLength(1);
     expect(emails[0].to).toBe("rotated@example.com");
     const link = emails[0].link;
+    // Link points to the UI confirmation PAGE, not the API route — the page
+    // is what fires the consuming POST after the user clicks Confirm.
+    expect(link).toContain("/account/confirm-email-change?token=");
+    expect(link).not.toContain("/api/auth/confirm-email-change");
     const tokenMatch = link.match(/token=([a-f0-9]+)/);
     expect(tokenMatch).not.toBeNull();
-    const confirm = await confirmEmailChangeRoute(
-      nextEmptyReq(
-        "GET",
-        `http://test.local/api/auth/confirm-email-change?token=${tokenMatch![1]}`,
-      ),
-    );
-    expect(confirm.status).toBe(307);
-    const loc = confirm.headers.get("location") ?? "";
-    expect(loc).toContain("email_change=ok");
+    const confirm = await confirmEmailChangeRoute(jsonReq("POST", { token: tokenMatch![1] }));
+    expect(confirm.status).toBe(200);
+    const body = (await confirm.json()) as { ok?: boolean };
+    expect(body.ok).toBe(true);
     const updated = userRepo.findById(process.env.AUTH_TEST_USER_ID!);
     expect(updated?.email).toBe("rotated@example.com");
+  });
+
+  it("peek GET returns the new email without consuming the token", async () => {
+    clearCapturedEmails();
+    await changeEmailRoute(
+      jsonReq("POST", { newEmail: "peek@example.com", currentPassword: "password123" }),
+    );
+    const token = getCapturedEmails()[0]!.link.match(/token=([a-f0-9]+)/)![1];
+    const peek1 = await peekEmailChangeRoute(
+      nextEmptyReq("GET", `http://test.local/api/auth/confirm-email-change?token=${token}`),
+    );
+    expect(peek1.status).toBe(200);
+    const body1 = (await peek1.json()) as { newEmail?: string };
+    expect(body1.newEmail).toBe("peek@example.com");
+    // Second peek must still succeed — proving GET did NOT consume.
+    const peek2 = await peekEmailChangeRoute(
+      nextEmptyReq("GET", `http://test.local/api/auth/confirm-email-change?token=${token}`),
+    );
+    expect(peek2.status).toBe(200);
+    const body2 = (await peek2.json()) as { newEmail?: string };
+    expect(body2.newEmail).toBe("peek@example.com");
+    // And the user's email is still the original — no consumption side effect.
+    const u = userRepo.findById(process.env.AUTH_TEST_USER_ID!);
+    expect(u?.email).toBe("test@example.com");
+  });
+
+  it("peek GET returns 404 for garbage/missing/used/expired tokens", async () => {
+    const garbage = await peekEmailChangeRoute(
+      nextEmptyReq("GET", "http://test.local/api/auth/confirm-email-change?token=garbage"),
+    );
+    expect(garbage.status).toBe(404);
+    const missing = await peekEmailChangeRoute(
+      nextEmptyReq("GET", "http://test.local/api/auth/confirm-email-change"),
+    );
+    expect(missing.status).toBe(404);
+    // Used token: confirm once, then peek must 404.
+    clearCapturedEmails();
+    await changeEmailRoute(
+      jsonReq("POST", { newEmail: "used@example.com", currentPassword: "password123" }),
+    );
+    const token = getCapturedEmails()[0]!.link.match(/token=([a-f0-9]+)/)![1];
+    const consumed = await confirmEmailChangeRoute(jsonReq("POST", { token }));
+    expect(consumed.status).toBe(200);
+    const peekUsed = await peekEmailChangeRoute(
+      nextEmptyReq("GET", `http://test.local/api/auth/confirm-email-change?token=${token}`),
+    );
+    expect(peekUsed.status).toBe(404);
   });
 
   it("change-email rejects wrong current password", async () => {
@@ -1442,19 +1491,18 @@ describe("Email change", () => {
     expect(res.status).toBe(401);
   });
 
-  it("confirm-email-change with garbage token redirects with error", async () => {
-    const res = await confirmEmailChangeRoute(
-      nextEmptyReq("GET", "http://test.local/api/auth/confirm-email-change?token=garbage"),
-    );
-    expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toContain("email_change=invalid");
+  it("confirm-email-change POST with garbage token returns 400 invalid", async () => {
+    const res = await confirmEmailChangeRoute(jsonReq("POST", { token: "garbage" }));
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("invalid");
   });
 
-  it("confirm-email-change without token redirects to missing", async () => {
-    const res = await confirmEmailChangeRoute(
-      nextEmptyReq("GET", "http://test.local/api/auth/confirm-email-change"),
-    );
-    expect(res.headers.get("location")).toContain("email_change=missing");
+  it("confirm-email-change POST without token returns 400 missing", async () => {
+    const res = await confirmEmailChangeRoute(jsonReq("POST", {}));
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("missing");
   });
 });
 
@@ -1530,10 +1578,10 @@ describe("Audit log", () => {
     expect(res.status).toBe(200);
     const token = getCapturedEmails()[0]!.link.match(/token=([a-f0-9]+)/)![1];
     seedUser("raceme@example.com"); // race: someone else just took the email
-    const confirm = await confirmEmailChangeRoute(
-      nextEmptyReq("GET", `http://test.local/api/auth/confirm-email-change?token=${token}`),
-    );
-    expect(confirm.headers.get("location")).toContain("email_change=conflict");
+    const confirm = await confirmEmailChangeRoute(jsonReq("POST", { token }));
+    expect(confirm.status).toBe(409);
+    const body = (await confirm.json()) as { error?: string };
+    expect(body.error).toBe("conflict");
   });
 });
 
