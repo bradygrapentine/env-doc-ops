@@ -5,7 +5,7 @@ import { getSessionUserId } from "@/lib/session";
 export async function GET() {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  return NextResponse.json(projectRepo.list(userId));
+  return NextResponse.json(projectRepo.listAccessible(userId));
 }
 
 export async function POST(req: Request) {

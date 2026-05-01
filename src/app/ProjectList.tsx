@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { Project } from "@/lib/types";
+import type { ProjectListEntry } from "@/lib/types";
 
 type SortKey = "newest" | "oldest" | "nameAsc" | "nameDesc";
 
@@ -13,7 +13,7 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "nameDesc", label: "Name Z→A" },
 ];
 
-export default function ProjectList({ projects }: { projects: Project[] }) {
+export default function ProjectList({ projects }: { projects: ProjectListEntry[] }) {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("newest");
 
@@ -88,7 +88,14 @@ export default function ProjectList({ projects }: { projects: Project[] }) {
               <Link href={`/projects/${p.id}`} className="block px-5 py-4 hover:bg-gray-50">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">{p.name}</div>
+                    <div className="font-medium flex items-center gap-2">
+                      <span>{p.name}</span>
+                      {p.role === "reader" && (
+                        <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-800">
+                          Shared
+                        </span>
+                      )}
+                    </div>
                     <div className="text-sm text-gray-500">
                       {p.location} · {p.jurisdiction}
                     </div>

@@ -70,3 +70,9 @@ export type Report = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type ShareRole = "reader";
+
+export type ProjectAccessRole = "owner" | "reader";
+
+export type ProjectListEntry = Project & { role: ProjectAccessRole };

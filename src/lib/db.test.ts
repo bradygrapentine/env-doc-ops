@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { projectRepo, trafficRepo } from "./db";
+import bcrypt from "bcryptjs";
+import { projectRepo, trafficRepo, shareRepo, userRepo } from "./db";
 import { resetDb } from "../../test/db";
 
 beforeEach(() => {
@@ -141,6 +142,106 @@ describe("trafficRepo row helpers", () => {
     expect(trafficRepo.deleteRow(projA.id, "nope")).toBe(false);
     expect(trafficRepo.deleteRow(projA.id, added.id)).toBe(true);
     expect(trafficRepo.getRow(projA.id, added.id)).toBeUndefined();
+  });
+});
+
+describe("shareRepo", () => {
+  function mkUser(email: string) {
+    return userRepo.create({
+      email,
+      name: email.split("@")[0],
+      passwordHash: bcrypt.hashSync("password123", 4),
+    });
+  }
+
+  it("add round-trips via listForProject", () => {
+    const owner = mkUser("owner@a.test");
+    const sharee = mkUser("sharee@a.test");
+    const project = projectRepo.create({ ...baseInput, userId: owner.id });
+    expect(shareRepo.add(project.id, sharee.id, "reader")).toBe(true);
+    const list = shareRepo.listForProject(project.id);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      userId: sharee.id,
+      email: "sharee@a.test",
+      role: "reader",
+    });
+  });
+
+  it("add is idempotent on duplicate", () => {
+    const owner = mkUser("owner@b.test");
+    const sharee = mkUser("sharee@b.test");
+    const project = projectRepo.create({ ...baseInput, userId: owner.id });
+    expect(shareRepo.add(project.id, sharee.id, "reader")).toBe(true);
+    expect(shareRepo.add(project.id, sharee.id, "reader")).toBe(false);
+    expect(shareRepo.listForProject(project.id)).toHaveLength(1);
+  });
+
+  it("cascades on project deletion", () => {
+    const owner = mkUser("owner@c.test");
+    const sharee = mkUser("sharee@c.test");
+    const sharee2 = mkUser("sharee2@c.test");
+    const projectA = projectRepo.create({ ...baseInput, userId: owner.id });
+    const projectB = projectRepo.create({ ...baseInput, name: "B", userId: owner.id });
+    shareRepo.add(projectA.id, sharee.id, "reader");
+    shareRepo.add(projectB.id, sharee2.id, "reader");
+    projectRepo.delete(projectA.id);
+    expect(shareRepo.listForProject(projectA.id)).toHaveLength(0);
+    expect(shareRepo.listForProject(projectB.id)).toHaveLength(1);
+  });
+
+  it("accessRole returns owner / reader / null", () => {
+    const owner = mkUser("owner@d.test");
+    const sharee = mkUser("sharee@d.test");
+    const stranger = mkUser("stranger@d.test");
+    const project = projectRepo.create({ ...baseInput, userId: owner.id });
+    shareRepo.add(project.id, sharee.id, "reader");
+    expect(shareRepo.accessRole(project.id, owner.id)).toBe("owner");
+    expect(shareRepo.accessRole(project.id, sharee.id)).toBe("reader");
+    expect(shareRepo.accessRole(project.id, stranger.id)).toBe(null);
+    expect(shareRepo.accessRole("nope", owner.id)).toBe(null);
+  });
+
+  it("user-deletion cascades shares", async () => {
+    const owner = mkUser("owner@e.test");
+    const sharee = mkUser("sharee@e.test");
+    const project = projectRepo.create({ ...baseInput, userId: owner.id });
+    shareRepo.add(project.id, sharee.id, "reader");
+    expect(shareRepo.listForProject(project.id)).toHaveLength(1);
+    const { closeDb } = await import("./db");
+    closeDb();
+    const Database = (await import("better-sqlite3")).default;
+    const conn = new Database(process.env.ENVDOCOS_DB_PATH!);
+    conn.pragma("foreign_keys = ON");
+    conn.prepare("DELETE FROM users WHERE id = ?").run(sharee.id);
+    conn.close();
+    expect(shareRepo.listForProject(project.id)).toHaveLength(0);
+  });
+});
+
+describe("projectRepo.listAccessible", () => {
+  function mkUser(email: string) {
+    return userRepo.create({
+      email,
+      name: email.split("@")[0],
+      passwordHash: bcrypt.hashSync("password123", 4),
+    });
+  }
+
+  it("returns owned + shared with role attached", () => {
+    const a = mkUser("a@list.test");
+    const b = mkUser("b@list.test");
+    const owned = projectRepo.create({ ...baseInput, userId: a.id, name: "Owned" });
+    const others = projectRepo.create({ ...baseInput, userId: b.id, name: "Others" });
+    shareRepo.add(others.id, a.id, "reader");
+    const list = projectRepo.listAccessible(a.id);
+    expect(list).toHaveLength(2);
+    const ownedRow = list.find((p) => p.id === owned.id);
+    const sharedRow = list.find((p) => p.id === others.id);
+    expect(ownedRow?.role).toBe("owner");
+    expect(sharedRow?.role).toBe("reader");
+    // owned precedes shared
+    expect(list[0].role).toBe("owner");
   });
 });
 

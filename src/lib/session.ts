@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { projectRepo, reportRepo } from "@/lib/db";
-import type { Project, Report } from "@/lib/types";
+import { projectRepo, reportRepo, shareRepo } from "@/lib/db";
+import type { Project, Report, ProjectAccessRole } from "@/lib/types";
 
 type Guard<T> = { ok: false; error: NextResponse } | ({ ok: true } & T);
+
+export type AccessMode = "read" | "write";
 
 /**
  * Returns the current session user id, or null if signed out.
@@ -13,8 +15,6 @@ type Guard<T> = { ok: false; error: NextResponse } | ({ ok: true } & T);
  * never set this. Tests set it via beforeEach.
  */
 export async function getSessionUserId(): Promise<string | null> {
-  // Test backdoor: in NODE_ENV=test we never go through Auth.js — only the
-  // env var decides who is signed in. Production never sets NODE_ENV=test.
   if (process.env.NODE_ENV === "test") {
     return process.env.AUTH_TEST_USER_ID ?? null;
   }
@@ -24,29 +24,44 @@ export async function getSessionUserId(): Promise<string | null> {
 }
 
 /**
- * Returns 401 if no session, 404 if the project doesn't belong to the user
- * (or doesn't exist — we collapse them to avoid leaking existence). Otherwise
- * returns the project + the session user id.
+ * Returns 401 if no session, 404 if the project doesn't exist or the user has
+ * no access (don't leak existence). For mode='write', sharees get a 403
+ * "Read-only access".
  */
-export async function requireOwnedProject(
+export async function requireProjectAccess(
   projectId: string,
-): Promise<Guard<{ userId: string; project: Project }>> {
+  mode: AccessMode,
+): Promise<Guard<{ userId: string; project: Project; role: ProjectAccessRole }>> {
   const userId = await getSessionUserId();
   if (!userId)
     return { ok: false, error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   const project = projectRepo.get(projectId);
-  if (!project || project.userId !== userId) {
+  if (!project) {
     return {
       ok: false,
       error: NextResponse.json({ error: "Project not found" }, { status: 404 }),
     };
   }
-  return { ok: true, userId, project };
+  const role = shareRepo.accessRole(projectId, userId);
+  if (!role) {
+    return {
+      ok: false,
+      error: NextResponse.json({ error: "Project not found" }, { status: 404 }),
+    };
+  }
+  if (mode === "write" && role !== "owner") {
+    return {
+      ok: false,
+      error: NextResponse.json({ error: "Read-only access" }, { status: 403 }),
+    };
+  }
+  return { ok: true, userId, project, role };
 }
 
-export async function requireOwnedReport(
+export async function requireReportAccess(
   reportId: string,
-): Promise<Guard<{ userId: string; project: Project; report: Report }>> {
+  mode: AccessMode,
+): Promise<Guard<{ userId: string; project: Project; report: Report; role: ProjectAccessRole }>> {
   const userId = await getSessionUserId();
   if (!userId)
     return { ok: false, error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
@@ -57,11 +72,42 @@ export async function requireOwnedReport(
       error: NextResponse.json({ error: "Report not found" }, { status: 404 }),
     };
   const project = projectRepo.get(report.projectId);
-  if (!project || project.userId !== userId) {
+  if (!project) {
     return {
       ok: false,
       error: NextResponse.json({ error: "Report not found" }, { status: 404 }),
     };
   }
-  return { ok: true, userId, project, report };
+  const role = shareRepo.accessRole(project.id, userId);
+  if (!role) {
+    return {
+      ok: false,
+      error: NextResponse.json({ error: "Report not found" }, { status: 404 }),
+    };
+  }
+  if (mode === "write" && role !== "owner") {
+    return {
+      ok: false,
+      error: NextResponse.json({ error: "Read-only access" }, { status: 403 }),
+    };
+  }
+  return { ok: true, userId, project, report, role };
+}
+
+/** Back-compat wrapper — write-mode access. */
+export async function requireOwnedProject(
+  projectId: string,
+): Promise<Guard<{ userId: string; project: Project }>> {
+  const guard = await requireProjectAccess(projectId, "write");
+  if (!guard.ok) return guard;
+  return { ok: true, userId: guard.userId, project: guard.project };
+}
+
+/** Back-compat wrapper — write-mode access. */
+export async function requireOwnedReport(
+  reportId: string,
+): Promise<Guard<{ userId: string; project: Project; report: Report }>> {
+  const guard = await requireReportAccess(reportId, "write");
+  if (!guard.ok) return guard;
+  return { ok: true, userId: guard.userId, project: guard.project, report: guard.report };
 }

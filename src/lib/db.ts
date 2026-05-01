@@ -10,6 +10,9 @@ import type {
   Period,
   SectionStatus,
   User,
+  ProjectListEntry,
+  ShareRole,
+  ProjectAccessRole,
 } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -56,6 +59,15 @@ const SCHEMA_SQL = `
     createdAt TEXT NOT NULL,
     updatedAt TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS project_shares (
+    projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    userId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK(role IN ('reader')),
+    createdAt TEXT NOT NULL,
+    PRIMARY KEY (projectId, userId)
+  );
+  CREATE INDEX IF NOT EXISTS idx_shares_user ON project_shares(userId);
 
   CREATE TABLE IF NOT EXISTS report_sections (
     id TEXT NOT NULL,
@@ -183,6 +195,34 @@ export const projectRepo = {
     const stmt = db().prepare(sql);
     const rows = (userId ? stmt.all(userId) : stmt.all()) as ProjectRow[];
     return rows.map((r) => hydrateProject(r)!);
+  },
+  listAccessible(userId: string): ProjectListEntry[] {
+    const conn = db();
+    const owned = conn
+      .prepare("SELECT * FROM projects WHERE userId = ? ORDER BY createdAt DESC")
+      .all(userId) as ProjectRow[];
+    const shared = conn
+      .prepare(
+        `SELECT p.* FROM projects p
+         INNER JOIN project_shares s ON s.projectId = p.id
+         WHERE s.userId = ? AND (p.userId IS NULL OR p.userId != ?)
+         ORDER BY p.createdAt DESC`,
+      )
+      .all(userId, userId) as ProjectRow[];
+    const seen = new Set<string>();
+    const out: ProjectListEntry[] = [];
+    for (const r of owned) {
+      const p = hydrateProject(r)!;
+      seen.add(p.id);
+      out.push({ ...p, role: "owner" });
+    }
+    for (const r of shared) {
+      const p = hydrateProject(r)!;
+      if (seen.has(p.id)) continue;
+      seen.add(p.id);
+      out.push({ ...p, role: "reader" });
+    }
+    return out;
   },
   get(id: string): Project | undefined {
     const row = db().prepare("SELECT * FROM projects WHERE id = ?").get(id) as
@@ -525,6 +565,58 @@ export const userRepo = {
       .prepare("UPDATE users SET passwordHash = ? WHERE id = ?")
       .run(passwordHash, userId);
     return info.changes > 0;
+  },
+};
+
+export const shareRepo = {
+  listForProject(
+    projectId: string,
+  ): Array<{ userId: string; email: string; name: string; role: ShareRole; createdAt: string }> {
+    return db()
+      .prepare(
+        `SELECT s.userId AS userId, u.email AS email, u.name AS name, s.role AS role, s.createdAt AS createdAt
+         FROM project_shares s
+         INNER JOIN users u ON u.id = s.userId
+         WHERE s.projectId = ?
+         ORDER BY s.createdAt ASC`,
+      )
+      .all(projectId) as Array<{
+      userId: string;
+      email: string;
+      name: string;
+      role: ShareRole;
+      createdAt: string;
+    }>;
+  },
+  add(projectId: string, userId: string, role: ShareRole): boolean {
+    const existing = db()
+      .prepare("SELECT 1 FROM project_shares WHERE projectId = ? AND userId = ?")
+      .get(projectId, userId);
+    if (existing) return false;
+    db()
+      .prepare(
+        `INSERT INTO project_shares (projectId, userId, role, createdAt) VALUES (?, ?, ?, ?)`,
+      )
+      .run(projectId, userId, role, now());
+    return true;
+  },
+  remove(projectId: string, userId: string): boolean {
+    const info = db()
+      .prepare("DELETE FROM project_shares WHERE projectId = ? AND userId = ?")
+      .run(projectId, userId);
+    return info.changes > 0;
+  },
+  accessRole(projectId: string, userId: string): ProjectAccessRole | null {
+    const conn = db();
+    const proj = conn.prepare("SELECT userId FROM projects WHERE id = ?").get(projectId) as
+      | { userId: string | null }
+      | undefined;
+    if (!proj) return null;
+    if (proj.userId === userId) return "owner";
+    const share = conn
+      .prepare("SELECT 1 FROM project_shares WHERE projectId = ? AND userId = ?")
+      .get(projectId, userId);
+    return share ? "reader" : null;
   },
 };
 
