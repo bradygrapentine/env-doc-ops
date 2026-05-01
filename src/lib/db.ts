@@ -849,7 +849,33 @@ export const auditRepo = {
       if (next !== row.details) update.run(next, row.id);
     }
   },
-  listForProject(projectId: string, limit = 100): AuditEntry[] {
+  // Cursor-paginated audit feed. `limit` defaults to 50 and is clamped to
+  // [1, 200]; non-finite/<=0/NaN values fall back to the default. `before` is
+  // an ISO `createdAt` string from a previously returned row — only rows with
+  // strictly older `createdAt` are returned, giving a stable "load older"
+  // cursor. Ordering is `createdAt DESC` so the oldest visible row's
+  // `createdAt` is the natural next cursor.
+  listForProject(projectId: string, opts: { limit?: number; before?: string } = {}): AuditEntry[] {
+    const DEFAULT_LIMIT = 50;
+    const MAX_LIMIT = 200;
+    let limit = DEFAULT_LIMIT;
+    const raw = opts.limit;
+    if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+      limit = Math.min(Math.floor(raw), MAX_LIMIT);
+    }
+    const before = typeof opts.before === "string" && opts.before.length > 0 ? opts.before : null;
+    if (before) {
+      return db()
+        .prepare(
+          `SELECT a.id, a.projectId, a.userId, a.action, a.details, a.createdAt, u.email AS userEmail
+           FROM audit_log a
+           LEFT JOIN users u ON u.id = a.userId
+           WHERE a.projectId = ? AND a.createdAt < ?
+           ORDER BY a.createdAt DESC
+           LIMIT ?`,
+        )
+        .all(projectId, before, limit) as AuditEntry[];
+    }
     return db()
       .prepare(
         `SELECT a.id, a.projectId, a.userId, a.action, a.details, a.createdAt, u.email AS userEmail

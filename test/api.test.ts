@@ -1566,6 +1566,82 @@ describe("Audit log", () => {
     expect(ownerId).toBeTruthy();
   });
 
+  it("paginates with default limit 50 and reports hasMore via cursor", async () => {
+    const project = await makeProject();
+    const { _dbInternal } = await import("@/lib/db");
+    // Seed 60 audit rows with monotonically-decreasing createdAt so the cursor
+    // can split them. (The real-world clock has ms resolution; a tight loop
+    // can collide, so we set createdAt explicitly here.)
+    const conn = _dbInternal();
+    const insert = conn.prepare(
+      "INSERT INTO audit_log (id, projectId, userId, action, details, createdAt) VALUES (?, ?, NULL, 'section.update', NULL, ?)",
+    );
+    for (let i = 0; i < 60; i++) {
+      const iso = new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString();
+      insert.run(`audit-${i}`, project.id, iso);
+    }
+    const res = await listAuditRoute(emptyReq("GET"), { params: { id: project.id } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string; createdAt: string }>;
+    expect(body.length).toBe(50);
+    // Cursor-fetch the next page using the oldest visible row's createdAt.
+    const cursor = body[body.length - 1]!.createdAt;
+    const next = await listAuditRoute(
+      new Request(`http://x/?before=${encodeURIComponent(cursor)}&limit=50`),
+      { params: { id: project.id } },
+    );
+    const nextBody = (await next.json()) as Array<{ id: string }>;
+    // 60 seeded; first page = 50 newest, second page = remaining 10.
+    expect(nextBody.length).toBe(10);
+    // No id overlap between pages.
+    const firstIds = new Set(body.map((r) => r.id));
+    for (const r of nextBody) expect(firstIds.has(r.id)).toBe(false);
+  });
+
+  it("clamps limit to max 200 and ignores invalid limit values", async () => {
+    const project = await makeProject();
+    const { auditRepo } = await import("@/lib/db");
+    for (let i = 0; i < 5; i++) {
+      auditRepo.log({ projectId: project.id, userId: null, action: "section.update" });
+    }
+    // limit=99999 -> clamped, returns all rows
+    const big = await listAuditRoute(new Request("http://x/?limit=99999"), {
+      params: { id: project.id },
+    });
+    const bigBody = (await big.json()) as unknown[];
+    expect(bigBody.length).toBeGreaterThan(0);
+    // limit=garbage -> default (50)
+    const garbage = await listAuditRoute(new Request("http://x/?limit=not-a-number"), {
+      params: { id: project.id },
+    });
+    expect(garbage.status).toBe(200);
+    const garbageBody = (await garbage.json()) as unknown[];
+    expect(garbageBody.length).toBeLessThanOrEqual(50);
+    // limit=0 / negative -> default
+    const zero = await listAuditRoute(new Request("http://x/?limit=0"), {
+      params: { id: project.id },
+    });
+    expect(zero.status).toBe(200);
+    const neg = await listAuditRoute(new Request("http://x/?limit=-5"), {
+      params: { id: project.id },
+    });
+    expect(neg.status).toBe(200);
+  });
+
+  it("respects an explicit small limit", async () => {
+    const project = await makeProject();
+    const { auditRepo } = await import("@/lib/db");
+    for (let i = 0; i < 5; i++) {
+      auditRepo.log({ projectId: project.id, userId: null, action: "section.update" });
+    }
+    const res = await listAuditRoute(new Request("http://x/?limit=2"), {
+      params: { id: project.id },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as unknown[];
+    expect(body.length).toBe(2);
+  });
+
   it("confirm-email-change handles a UNIQUE-constraint race as conflict", async () => {
     // Issue a valid token, but seed the new email on another user before the
     // token is consumed. The fast-path `findByEmail` catches it; this test
