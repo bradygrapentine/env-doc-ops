@@ -677,8 +677,18 @@ export const userRepo = {
     return info.changes > 0;
   },
   delete(userId: string): boolean {
-    const info = db().prepare("DELETE FROM users WHERE id = ?").run(userId);
-    return info.changes > 0;
+    // GDPR scrub: rewrite audit_log.details that reference this userId BEFORE
+    // the FK cascade (audit_log.userId ON DELETE SET NULL) fires, so target-of-
+    // share rows authored by other users still get their details purged. The
+    // two ops share a transaction so a partial scrub can't leak data if the
+    // DELETE fails.
+    let deleted = false;
+    db().transaction(() => {
+      auditRepo.scrubUser(userId);
+      const info = db().prepare("DELETE FROM users WHERE id = ?").run(userId);
+      deleted = info.changes > 0;
+    })();
+    return deleted;
   },
 };
 
@@ -770,6 +780,23 @@ export type AuditEntry = {
   userEmail?: string | null;
 };
 
+function scrubValue(value: unknown, userId: string): unknown {
+  if (typeof value === "string") {
+    return value === userId ? "[scrubbed]" : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => scrubValue(v, userId));
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = scrubValue(v, userId);
+    }
+    return out;
+  }
+  return value;
+}
+
 export const auditRepo = {
   log(entry: {
     projectId: string;
@@ -788,6 +815,37 @@ export const auditRepo = {
         `INSERT INTO audit_log (id, projectId, userId, action, details, createdAt) VALUES (?, ?, ?, ?, ?, ?)`,
       )
       .run(uid(), entry.projectId, entry.userId, entry.action, detailsStr, now());
+  },
+  // GDPR erasure: rewrite any audit_log.details JSON value that equals the
+  // given userId to the string "[scrubbed]". Targets both rows authored by
+  // the user (FK SET NULL handles userId) and rows where the user appears as
+  // a `targetUserId` in share-event details (FK doesn't help there). Action
+  // and createdAt are preserved — the audit history stays intact, only the
+  // personal identifier is purged. Idempotent: a second call has no effect
+  // because "[scrubbed]" no longer matches the userId substring.
+  scrubUser(userId: string): void {
+    if (!userId) return;
+    const rows = db()
+      .prepare("SELECT id, details FROM audit_log WHERE details LIKE ?")
+      .all(`%${userId}%`) as Array<{ id: string; details: string | null }>;
+    const update = db().prepare("UPDATE audit_log SET details = ? WHERE id = ?");
+    db().transaction(() => {
+      for (const row of rows) {
+        if (!row.details) continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(row.details);
+        } catch {
+          // non-JSON details: fall back to raw string replace
+          const replaced = row.details.split(userId).join("[scrubbed]");
+          if (replaced !== row.details) update.run(replaced, row.id);
+          continue;
+        }
+        const scrubbed = scrubValue(parsed, userId);
+        const next = JSON.stringify(scrubbed);
+        if (next !== row.details) update.run(next, row.id);
+      }
+    })();
   },
   listForProject(projectId: string, limit = 100): AuditEntry[] {
     return db()

@@ -1648,3 +1648,141 @@ describe("Account deletion", () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe("Audit log GDPR scrub on user delete", () => {
+  // Inline helper: read raw audit_log rows (including ones with no project access)
+  // straight out of the DB so we can assert on details/userId post-cascade.
+  async function rawAuditRows(): Promise<
+    Array<{
+      id: string;
+      projectId: string;
+      userId: string | null;
+      action: string;
+      details: string | null;
+    }>
+  > {
+    const { _dbInternal } = await import("@/lib/db");
+    return _dbInternal()
+      .prepare("SELECT id, projectId, userId, action, details FROM audit_log")
+      .all() as Array<{
+      id: string;
+      projectId: string;
+      userId: string | null;
+      action: string;
+      details: string | null;
+    }>;
+  }
+
+  it("scrubs details mentioning the deleted user (actor rows)", async () => {
+    const ownerId = process.env.AUTH_TEST_USER_ID!;
+    const project = await makeProject();
+    const shareeId = seedUser("scrub-target@example.com");
+    // owner adds a share -> audit row userId=ownerId, details.targetUserId=shareeId
+    await addShare(jsonReq("POST", { email: "scrub-target@example.com" }), {
+      params: { id: project.id },
+    });
+
+    // sanity: row exists pre-delete with raw ids
+    const before = await rawAuditRows();
+    const shareAddBefore = before.find((r) => r.action === "share.add")!;
+    expect(shareAddBefore.userId).toBe(ownerId);
+    expect(shareAddBefore.details).toContain(shareeId);
+
+    const { auditRepo } = await import("@/lib/db");
+    auditRepo.scrubUser(shareeId);
+
+    const after = await rawAuditRows();
+    const shareAddAfter = after.find((r) => r.action === "share.add")!;
+    expect(shareAddAfter.details).not.toContain(shareeId);
+    expect(shareAddAfter.details).toContain("[scrubbed]");
+    // action + row preserved
+    expect(shareAddAfter.action).toBe("share.add");
+    void ownerId;
+  });
+
+  it("does not over-scrub rows belonging to other users", async () => {
+    const project = await makeProject();
+    const otherId = seedUser("other-untouched@example.com");
+    const shareeId = seedUser("scrub-me@example.com");
+    // add a share for the unrelated other user
+    await addShare(jsonReq("POST", { email: "other-untouched@example.com" }), {
+      params: { id: project.id },
+    });
+
+    const { auditRepo } = await import("@/lib/db");
+    auditRepo.scrubUser(shareeId);
+
+    const after = await rawAuditRows();
+    const shareAdd = after.find((r) => r.action === "share.add")!;
+    // unrelated row still mentions the un-deleted other user
+    expect(shareAdd.details).toContain(otherId);
+    expect(shareAdd.details).not.toContain("[scrubbed]");
+  });
+
+  it("scrubs rows where the deleted user was the share target (different actor)", async () => {
+    const project = await makeProject();
+    const shareeId = seedUser("target-only@example.com");
+    await addShare(jsonReq("POST", { email: "target-only@example.com" }), {
+      params: { id: project.id },
+    });
+    await removeShare(emptyReq("DELETE"), { params: { id: project.id, userId: shareeId } });
+
+    const { auditRepo } = await import("@/lib/db");
+    auditRepo.scrubUser(shareeId);
+
+    const after = await rawAuditRows();
+    const shareRows = after.filter((r) => r.action === "share.add" || r.action === "share.remove");
+    expect(shareRows.length).toBeGreaterThanOrEqual(2);
+    for (const r of shareRows) {
+      expect(r.details ?? "").not.toContain(shareeId);
+      expect(r.details ?? "").toContain("[scrubbed]");
+    }
+  });
+
+  it("is idempotent — calling scrubUser twice does not double-scrub or fail", async () => {
+    const project = await makeProject();
+    const shareeId = seedUser("idem@example.com");
+    await addShare(jsonReq("POST", { email: "idem@example.com" }), {
+      params: { id: project.id },
+    });
+
+    const { auditRepo } = await import("@/lib/db");
+    auditRepo.scrubUser(shareeId);
+    const first = await rawAuditRows();
+    auditRepo.scrubUser(shareeId);
+    const second = await rawAuditRows();
+    expect(second).toEqual(first);
+  });
+
+  it("DELETE /api/auth/account scrubs details before the FK cascade nulls userId", async () => {
+    // owner shares a project to a sharee, then deletes its own account.
+    // The cascade SET NULLs audit_log.userId for owner-actor rows; we want
+    // any details still mentioning the owner (or, in a target-of-share row,
+    // the owner-as-target) to be scrubbed.
+    const ownerId = process.env.AUTH_TEST_USER_ID!;
+    const project = await makeProject();
+    // Make someone else share a project back to the owner so owner appears
+    // as a targetUserId. Easiest path: switch session to a fresh user, have
+    // them create a project and share to the owner.
+    const otherId = seedUser("delegator@example.com");
+    process.env.AUTH_TEST_USER_ID = otherId;
+    const otherProject = await createProject(jsonReq("POST", PROJECT_BODY));
+    const otherProjectId = (await otherProject.json()).id;
+    await addShare(jsonReq("POST", { email: "test@example.com" }), {
+      params: { id: otherProjectId },
+    });
+    // switch back to owner and delete account
+    process.env.AUTH_TEST_USER_ID = ownerId;
+    void project;
+    const res = await deleteAccountRoute(jsonReq("DELETE", { currentPassword: "password123" }));
+    expect(res.status).toBe(200);
+
+    const { _dbInternal } = await import("@/lib/db");
+    const rows = _dbInternal().prepare("SELECT details FROM audit_log").all() as Array<{
+      details: string | null;
+    }>;
+    for (const r of rows) {
+      expect(r.details ?? "").not.toContain(ownerId);
+    }
+  });
+});
