@@ -27,6 +27,7 @@ const report: Report = {
       order: 1,
       content: "Body of exec summary.",
       status: "draft",
+      kind: "standard",
       machineBaseline: "Body of exec summary.",
     },
     {
@@ -35,6 +36,7 @@ const report: Report = {
       order: 4,
       content: "Existing conditions body.",
       status: "draft",
+      kind: "standard",
       machineBaseline: "Existing conditions body.",
     },
     {
@@ -43,6 +45,7 @@ const report: Report = {
       order: 8,
       content: "Body of conclusion.",
       status: "draft",
+      kind: "standard",
       machineBaseline: "Body of conclusion.",
     },
   ],

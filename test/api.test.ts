@@ -17,7 +17,12 @@ import { POST as previewCsv } from "@/app/api/projects/[id]/traffic-data/preview
 import { POST as generateReport } from "@/app/api/projects/[id]/generate-report/route";
 import { POST as previewReport } from "@/app/api/projects/[id]/generate-report/preview/route";
 import { GET as getReport } from "@/app/api/reports/[id]/route";
-import { PATCH as patchSection } from "@/app/api/reports/[id]/sections/[sectionId]/route";
+import {
+  PATCH as patchSection,
+  DELETE as deleteSection,
+} from "@/app/api/reports/[id]/sections/[sectionId]/route";
+import { POST as addCustomSection } from "@/app/api/reports/[id]/sections/route";
+import { PATCH as reorderSections } from "@/app/api/reports/[id]/sections/order/route";
 import { POST as regenerateSection } from "@/app/api/reports/[id]/sections/[sectionId]/regenerate/route";
 import { POST as exportDocx } from "@/app/api/reports/[id]/export-docx/route";
 import { POST as exportPdf } from "@/app/api/reports/[id]/export-pdf/route";
@@ -609,6 +614,158 @@ describe("Authorization: unsigned requests", () => {
     const projectId = (await makeProject()).id;
     delete process.env.AUTH_TEST_USER_ID;
     const res = await getProject(emptyReq("GET"), { params: { id: projectId } });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("PATCH /api/reports/:id/sections/order", () => {
+  it("reorders sections (happy path)", async () => {
+    const { reportId, sections } = await makeReport();
+    const ids: string[] = sections.map((s: { id: string }) => s.id);
+    const reversed = [...ids].reverse();
+    const res = await reorderSections(jsonReq("PATCH", { orderedIds: reversed }), {
+      params: { id: reportId },
+    });
+    expect(res.status).toBe(200);
+    const after = await getReport(emptyReq("GET"), { params: { id: reportId } });
+    const body = await after.json();
+    const got = body.sections.map((s: { id: string }) => s.id);
+    expect(got).toEqual(reversed);
+    body.sections.forEach((s: { order: number }, i: number) => expect(s.order).toBe(i + 1));
+  });
+
+  it("rejects mismatched id set with 400", async () => {
+    const { reportId, sections } = await makeReport();
+    const ids: string[] = sections.map((s: { id: string }) => s.id);
+    const bad = [...ids.slice(1), "totally-fake-id"];
+    const res = await reorderSections(jsonReq("PATCH", { orderedIds: bad }), {
+      params: { id: reportId },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/existing section ids/i);
+  });
+
+  it("returns 404 cross-user", async () => {
+    const { reportId, sections } = await makeReport();
+    process.env.AUTH_TEST_USER_ID = seedUser("order-b@example.com");
+    const res = await reorderSections(
+      jsonReq("PATCH", { orderedIds: sections.map((s: { id: string }) => s.id) }),
+      { params: { id: reportId } },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 401 unauth", async () => {
+    const { reportId, sections } = await makeReport();
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await reorderSections(
+      jsonReq("PATCH", { orderedIds: sections.map((s: { id: string }) => s.id) }),
+      { params: { id: reportId } },
+    );
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /api/reports/:id/sections", () => {
+  it("adds a custom section with monotonically next order", async () => {
+    const { reportId } = await makeReport();
+    const res = await addCustomSection(jsonReq("POST", { title: "My custom", content: "hi" }), {
+      params: { id: reportId },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.kind).toBe("custom");
+    expect(body.status).toBe("draft");
+    expect(body.title).toBe("My custom");
+    expect(body.order).toBe(9);
+    expect(body.machineBaseline).toBe("hi");
+
+    const after = await getReport(emptyReq("GET"), { params: { id: reportId } });
+    const r = await after.json();
+    expect(r.sections).toHaveLength(9);
+  });
+
+  it("rejects empty title with 400", async () => {
+    const { reportId } = await makeReport();
+    const res = await addCustomSection(jsonReq("POST", { title: "   " }), {
+      params: { id: reportId },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 cross-user", async () => {
+    const { reportId } = await makeReport();
+    process.env.AUTH_TEST_USER_ID = seedUser("add-b@example.com");
+    const res = await addCustomSection(jsonReq("POST", { title: "X" }), {
+      params: { id: reportId },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 401 unauth", async () => {
+    const { reportId } = await makeReport();
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await addCustomSection(jsonReq("POST", { title: "X" }), {
+      params: { id: reportId },
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("DELETE /api/reports/:id/sections/:sectionId", () => {
+  it("deletes a custom section (204) and excludes from GET", async () => {
+    const { reportId } = await makeReport();
+    const addRes = await addCustomSection(jsonReq("POST", { title: "tmp", content: "" }), {
+      params: { id: reportId },
+    });
+    const added = await addRes.json();
+    const del = await deleteSection(emptyReq("DELETE"), {
+      params: { id: reportId, sectionId: added.id },
+    });
+    expect(del.status).toBe(204);
+    const after = await getReport(emptyReq("GET"), { params: { id: reportId } });
+    const body = await after.json();
+    expect(body.sections.find((s: { id: string }) => s.id === added.id)).toBeUndefined();
+  });
+
+  it("refuses to delete a standard section with 400", async () => {
+    const { reportId } = await makeReport();
+    const res = await deleteSection(emptyReq("DELETE"), {
+      params: { id: reportId, sectionId: "executive-summary" },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("Cannot delete a standard section");
+  });
+
+  it("returns 404 for unknown section id", async () => {
+    const { reportId } = await makeReport();
+    const res = await deleteSection(emptyReq("DELETE"), {
+      params: { id: reportId, sectionId: "no-such-section" },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 cross-user", async () => {
+    const { reportId } = await makeReport();
+    const addRes = await addCustomSection(jsonReq("POST", { title: "tmp" }), {
+      params: { id: reportId },
+    });
+    const added = await addRes.json();
+    process.env.AUTH_TEST_USER_ID = seedUser("del-b@example.com");
+    const res = await deleteSection(emptyReq("DELETE"), {
+      params: { id: reportId, sectionId: added.id },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 401 unauth", async () => {
+    const { reportId } = await makeReport();
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await deleteSection(emptyReq("DELETE"), {
+      params: { id: reportId, sectionId: "executive-summary" },
+    });
     expect(res.status).toBe(401);
   });
 });

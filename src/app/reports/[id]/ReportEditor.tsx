@@ -1,7 +1,22 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { Report, ReportSection, SectionStatus, TrafficMetrics } from "@/lib/types";
 
 const STATUSES: SectionStatus[] = ["draft", "reviewed", "final"];
@@ -18,8 +33,20 @@ export default function ReportEditor({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  const [reorderError, setReorderError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const searchParams = useSearchParams();
   const titleById = useMemo(
@@ -71,6 +98,72 @@ export default function ReportEditor({
 
   function updateActive(patch: Partial<ReportSection>) {
     setSections((prev) => prev.map((s) => (s.id === activeId ? { ...s, ...patch } : s)));
+  }
+
+  async function onDragEnd(event: DragEndEvent) {
+    const { active: a, over } = event;
+    if (!over || a.id === over.id) return;
+    const oldIdx = sections.findIndex((s) => s.id === a.id);
+    const newIdx = sections.findIndex((s) => s.id === over.id);
+    if (oldIdx < 0 || newIdx < 0) return;
+    const previous = sections;
+    const next = arrayMove(sections, oldIdx, newIdx).map((s, i) => ({ ...s, order: i + 1 }));
+    setSections(next);
+    setReorderError(null);
+    const res = await fetch(`/api/reports/${report.id}/sections/order`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderedIds: next.map((s) => s.id) }),
+    });
+    if (!res.ok) {
+      setSections(previous);
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      setReorderError(body?.error ?? "Reorder failed");
+    }
+  }
+
+  async function submitAddSection(e: React.FormEvent) {
+    e.preventDefault();
+    setAddError(null);
+    const title = newTitle.trim();
+    if (!title) {
+      setAddError("Title is required");
+      return;
+    }
+    setAdding(true);
+    try {
+      const res = await fetch(`/api/reports/${report.id}/sections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, content: "" }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        setAddError(body?.error ?? "Add failed");
+        return;
+      }
+      const section = (await res.json()) as ReportSection;
+      setSections((prev) => [...prev, section]);
+      setActiveId(section.id);
+      setNewTitle("");
+      setShowAddForm(false);
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function deleteCustom(section: ReportSection) {
+    if (!window.confirm("Delete this custom section?")) return;
+    const res = await fetch(`/api/reports/${report.id}/sections/${section.id}`, {
+      method: "DELETE",
+    });
+    if (res.status === 204) {
+      setSections((prev) => {
+        const next = prev.filter((s) => s.id !== section.id);
+        if (section.id === activeId) setActiveId(next[0]?.id ?? "");
+        return next;
+      });
+    }
   }
 
   async function exportDocx() {
@@ -145,29 +238,95 @@ export default function ReportEditor({
 
       <div className="grid grid-cols-12 gap-6">
         <aside className="col-span-12 lg:col-span-3 bg-white border rounded p-4 h-fit">
-          <ul className="space-y-1">
-            {sections.map((s) => (
-              <li key={s.id}>
-                <button
-                  onClick={() => setActiveId(s.id)}
-                  className={`w-full text-left rounded px-3 py-2 text-sm flex justify-between items-center ${
-                    s.id === activeId ? "bg-gray-900 text-white" : "hover:bg-gray-100"
-                  }`}
-                >
-                  <span>
-                    {s.order}. {s.title}
-                  </span>
-                  <span
-                    className={`text-[10px] uppercase tracking-wide ${
-                      s.id === activeId ? "text-gray-300" : "text-gray-400"
+          {mounted ? (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext
+                items={sections.map((s) => s.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className="space-y-1">
+                  {sections.map((s) => (
+                    <SortableRow
+                      key={s.id}
+                      section={s}
+                      isActive={s.id === activeId}
+                      onSelect={() => setActiveId(s.id)}
+                      onDelete={s.kind === "custom" ? () => deleteCustom(s) : undefined}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
+          ) : (
+            <ul className="space-y-1">
+              {sections.map((s) => (
+                <li key={s.id}>
+                  <button
+                    onClick={() => setActiveId(s.id)}
+                    className={`w-full text-left rounded px-3 py-2 text-sm flex justify-between items-center ${
+                      s.id === activeId ? "bg-gray-900 text-white" : "hover:bg-gray-100"
                     }`}
                   >
-                    {s.status}
-                  </span>
+                    <span>
+                      {s.order}. {s.title}
+                    </span>
+                    <span
+                      className={`text-[10px] uppercase tracking-wide ${
+                        s.id === activeId ? "text-gray-300" : "text-gray-400"
+                      }`}
+                    >
+                      {s.status}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {reorderError && <div className="mt-2 text-xs text-red-600">{reorderError}</div>}
+
+          {showAddForm ? (
+            <form onSubmit={submitAddSection} className="mt-3 space-y-2">
+              <input
+                type="text"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="Section title"
+                maxLength={200}
+                className="w-full border rounded px-2 py-1 text-sm"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={adding}
+                  className="rounded bg-black text-white px-3 py-1 text-xs disabled:opacity-50"
+                >
+                  {adding ? "Adding…" : "Add"}
                 </button>
-              </li>
-            ))}
-          </ul>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddForm(false);
+                    setNewTitle("");
+                    setAddError(null);
+                  }}
+                  className="rounded border px-3 py-1 text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
+              {addError && <div className="text-xs text-red-600">{addError}</div>}
+            </form>
+          ) : (
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="mt-3 w-full rounded border border-dashed px-3 py-2 text-xs text-gray-600 hover:bg-gray-50"
+            >
+              + Add custom section
+            </button>
+          )}
+
           <button
             onClick={exportDocx}
             disabled={exporting}
@@ -214,13 +373,15 @@ export default function ReportEditor({
                 {regeneratingId === active.id && (
                   <span className="text-xs text-gray-500">Regenerating…</span>
                 )}
-                <button
-                  onClick={() => regenerateSection(active)}
-                  disabled={regeneratingId === active.id}
-                  className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Regenerate from data
-                </button>
+                {active.kind === "standard" && (
+                  <button
+                    onClick={() => regenerateSection(active)}
+                    disabled={regeneratingId === active.id}
+                    className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Regenerate from data
+                  </button>
+                )}
                 <button
                   onClick={() => saveSection(active)}
                   className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
@@ -259,6 +420,75 @@ export default function ReportEditor({
         </aside>
       </div>
     </div>
+  );
+}
+
+function SortableRow({
+  section,
+  isActive,
+  onSelect,
+  onDelete,
+}: {
+  section: ReportSection;
+  isActive: boolean;
+  onSelect: () => void;
+  onDelete?: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: section.id,
+  });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+  return (
+    <li ref={setNodeRef} style={style} className="group">
+      <div
+        className={`flex items-center rounded ${
+          isActive ? "bg-gray-900 text-white" : "hover:bg-gray-100"
+        }`}
+      >
+        <button
+          type="button"
+          aria-label="Drag to reorder"
+          {...attributes}
+          {...listeners}
+          className={`px-2 py-2 cursor-grab touch-none ${
+            isActive ? "text-gray-400" : "text-gray-300"
+          } hover:text-gray-500`}
+        >
+          ≡
+        </button>
+        <button
+          onClick={onSelect}
+          className="flex-1 text-left px-1 py-2 text-sm flex justify-between items-center"
+        >
+          <span>
+            {section.order}. {section.title}
+          </span>
+          <span
+            className={`text-[10px] uppercase tracking-wide ${
+              isActive ? "text-gray-300" : "text-gray-400"
+            }`}
+          >
+            {section.status}
+          </span>
+        </button>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            aria-label="Delete custom section"
+            className={`px-2 py-2 text-xs opacity-0 group-hover:opacity-100 ${
+              isActive ? "text-gray-300 hover:text-white" : "text-gray-400 hover:text-red-600"
+            }`}
+          >
+            🗑
+          </button>
+        )}
+      </div>
+    </li>
   );
 }
 

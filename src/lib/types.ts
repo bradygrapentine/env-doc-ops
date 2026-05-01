@@ -51,6 +51,8 @@ export type TrafficMetrics = {
 
 export type SectionStatus = "draft" | "reviewed" | "final";
 
+export type SectionKind = "standard" | "custom";
+
 export type ReportSection = {
   id: string;
   title: string;
@@ -58,6 +60,7 @@ export type ReportSection = {
   content: string;
   status: SectionStatus;
   machineBaseline: string;
+  kind: SectionKind;
 };
 
 export type Report = {

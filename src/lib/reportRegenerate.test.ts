@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { planRegenerate } from "./reportRegenerate";
-import type { ReportSection, SectionStatus } from "./types";
+import type { ReportSection, SectionKind, SectionStatus } from "./types";
 
 const fresh = (id: string, content: string): ReportSection => ({
   id,
@@ -9,6 +9,7 @@ const fresh = (id: string, content: string): ReportSection => ({
   status: "draft",
   content,
   machineBaseline: content,
+  kind: "standard",
 });
 
 const existing = (
@@ -16,6 +17,7 @@ const existing = (
   content: string,
   baseline: string,
   status: SectionStatus = "draft",
+  kind: SectionKind = "standard",
 ): ReportSection => ({
   id,
   title: id,
@@ -23,6 +25,7 @@ const existing = (
   status,
   content,
   machineBaseline: baseline,
+  kind,
 });
 
 describe("planRegenerate", () => {
@@ -78,6 +81,27 @@ describe("planRegenerate", () => {
       [fresh("a", "new"), fresh("b", "B")],
     );
     expect(result.refreshed).toContain("b");
+  });
+
+  it("always preserves a custom section across regenerate", () => {
+    const customSection = existing(
+      "custom-1",
+      "user wrote this",
+      "user wrote this",
+      "draft",
+      "custom",
+    );
+    const result = planRegenerate(
+      [existing("a", "old", "old", "draft"), customSection],
+      [fresh("a", "new")],
+    );
+    expect(result.preserved).toContain("custom-1");
+    const got = result.merged.find((s) => s.id === "custom-1");
+    expect(got).toBeDefined();
+    expect(got?.content).toBe("user wrote this");
+    expect(got?.kind).toBe("custom");
+    // Custom sections appended after fresh ones with continuing order.
+    expect(got?.order).toBeGreaterThan(result.merged.find((s) => s.id === "a")?.order ?? 0);
   });
 
   it("updates title and order from fresh even when preserving content", () => {

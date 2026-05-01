@@ -26,7 +26,7 @@ export function planRegenerate(
   const refreshed: string[] = [];
   const preserved: string[] = [];
 
-  const merged = fresh.map((f) => {
+  const merged: ReportSection[] = fresh.map((f) => {
     const cur = byId.get(f.id);
     if (!cur) {
       refreshed.push(f.id);
@@ -41,6 +41,17 @@ export function planRegenerate(
     refreshed.push(f.id);
     return { ...f, machineBaseline: f.content };
   });
+
+  // Always preserve custom sections — they're not part of the template, so the
+  // generator never produces them. Append them after the fresh sections,
+  // continuing the order numbering, and report their ids in `preserved`.
+  const freshIds = new Set(fresh.map((f) => f.id));
+  const customs = existing.filter((s) => s.kind === "custom" && !freshIds.has(s.id));
+  let nextOrder = merged.length > 0 ? Math.max(...merged.map((s) => s.order)) + 1 : 1;
+  for (const c of customs) {
+    merged.push({ ...c, order: nextOrder++ });
+    preserved.push(c.id);
+  }
 
   return { merged, refreshed, preserved };
 }

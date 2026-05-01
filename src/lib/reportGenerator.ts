@@ -53,6 +53,7 @@ export function generateReportSections(project: Project, rows: TrafficCountRow[]
     content,
     status: "draft",
     machineBaseline: content,
+    kind: "standard",
   });
 
   const tripGenContent = tripGenOverride
