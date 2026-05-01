@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { projectRepo } from "./db";
+import { projectRepo, trafficRepo } from "./db";
 import { resetDb } from "../../test/db";
 
 beforeEach(() => {
@@ -90,6 +90,57 @@ describe("projectRepo manualInputs", () => {
     expect(cleared!.manualInputs).toBeUndefined();
     const got = projectRepo.get(created.id);
     expect(got!.manualInputs).toBeUndefined();
+  });
+});
+
+describe("trafficRepo row helpers", () => {
+  const sampleRow = {
+    intersection: "Main & 1st",
+    period: "AM" as const,
+    approach: "N",
+    inbound: 10,
+    outbound: 20,
+    total: 30,
+  };
+
+  it("addRow round-trips through getRow", () => {
+    const project = projectRepo.create(baseInput);
+    const added = trafficRepo.addRow(project.id, sampleRow);
+    expect(added.id).toBeTruthy();
+    expect(added.projectId).toBe(project.id);
+    const got = trafficRepo.getRow(project.id, added.id);
+    expect(got).toMatchObject(sampleRow);
+  });
+
+  it("updateRow only changes supplied fields; others unchanged", () => {
+    const project = projectRepo.create(baseInput);
+    const added = trafficRepo.addRow(project.id, sampleRow);
+    const updated = trafficRepo.updateRow(project.id, added.id, { inbound: 99 });
+    expect(updated).toBeDefined();
+    expect(updated!.inbound).toBe(99);
+    expect(updated!.outbound).toBe(sampleRow.outbound);
+    expect(updated!.total).toBe(sampleRow.total);
+    expect(updated!.intersection).toBe(sampleRow.intersection);
+    expect(updated!.period).toBe(sampleRow.period);
+    expect(updated!.approach).toBe(sampleRow.approach);
+  });
+
+  it("getRow returns undefined for a row id from a different project", () => {
+    const projA = projectRepo.create(baseInput);
+    const projB = projectRepo.create({ ...baseInput, name: "B" });
+    const added = trafficRepo.addRow(projA.id, sampleRow);
+    expect(trafficRepo.getRow(projB.id, added.id)).toBeUndefined();
+    expect(trafficRepo.updateRow(projB.id, added.id, { inbound: 1 })).toBeUndefined();
+  });
+
+  it("deleteRow returns false for a row not in the project", () => {
+    const projA = projectRepo.create(baseInput);
+    const projB = projectRepo.create({ ...baseInput, name: "B" });
+    const added = trafficRepo.addRow(projA.id, sampleRow);
+    expect(trafficRepo.deleteRow(projB.id, added.id)).toBe(false);
+    expect(trafficRepo.deleteRow(projA.id, "nope")).toBe(false);
+    expect(trafficRepo.deleteRow(projA.id, added.id)).toBe(true);
+    expect(trafficRepo.getRow(projA.id, added.id)).toBeUndefined();
   });
 });
 

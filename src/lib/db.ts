@@ -245,6 +245,63 @@ export const trafficRepo = {
       .prepare("SELECT * FROM traffic_counts WHERE projectId = ?")
       .all(projectId) as TrafficCountRow[];
   },
+  getRow(projectId: string, rowId: string): TrafficCountRow | undefined {
+    return db()
+      .prepare("SELECT * FROM traffic_counts WHERE projectId = ? AND id = ?")
+      .get(projectId, rowId) as TrafficCountRow | undefined;
+  },
+  addRow(projectId: string, row: Omit<TrafficCountRow, "id" | "projectId">): TrafficCountRow {
+    const full: TrafficCountRow = { ...row, id: uid(), projectId };
+    db()
+      .prepare(
+        `INSERT INTO traffic_counts (id, projectId, intersection, period, approach, inbound, outbound, total)
+         VALUES (@id, @projectId, @intersection, @period, @approach, @inbound, @outbound, @total)`,
+      )
+      .run({ ...full, approach: full.approach ?? null });
+    return full;
+  },
+  updateRow(
+    projectId: string,
+    rowId: string,
+    patch: Partial<Omit<TrafficCountRow, "id" | "projectId">>,
+  ): TrafficCountRow | undefined {
+    const conn = db();
+    const existing = conn
+      .prepare("SELECT * FROM traffic_counts WHERE projectId = ? AND id = ?")
+      .get(projectId, rowId) as TrafficCountRow | undefined;
+    if (!existing) return undefined;
+    const allowed = ["intersection", "period", "approach", "inbound", "outbound", "total"] as const;
+    const fields: string[] = [];
+    const values: (string | number | null)[] = [];
+    for (const key of allowed) {
+      if (key in patch) {
+        fields.push(`${key} = ?`);
+        const v = patch[key];
+        if (key === "approach") {
+          values.push(v === undefined || v === null || v === "" ? null : (v as string));
+        } else if (key === "inbound" || key === "outbound" || key === "total") {
+          values.push(v as number);
+        } else {
+          values.push(v as string);
+        }
+      }
+    }
+    if (fields.length === 0) {
+      return existing;
+    }
+    conn
+      .prepare(`UPDATE traffic_counts SET ${fields.join(", ")} WHERE projectId = ? AND id = ?`)
+      .run(...values, projectId, rowId);
+    return conn
+      .prepare("SELECT * FROM traffic_counts WHERE projectId = ? AND id = ?")
+      .get(projectId, rowId) as TrafficCountRow | undefined;
+  },
+  deleteRow(projectId: string, rowId: string): boolean {
+    const info = db()
+      .prepare("DELETE FROM traffic_counts WHERE projectId = ? AND id = ?")
+      .run(projectId, rowId);
+    return info.changes > 0;
+  },
   replaceForProject(
     projectId: string,
     rows: Omit<TrafficCountRow, "id" | "projectId">[],

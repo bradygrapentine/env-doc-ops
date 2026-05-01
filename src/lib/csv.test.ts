@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTrafficCsv, parseTrafficCsvDetailed } from "./csv";
+import { parseTrafficCsv, parseTrafficCsvDetailed, validateRow } from "./csv";
 
 const HEADER = "intersection,period,approach,inbound,outbound,total";
 
@@ -109,6 +109,42 @@ describe("parseTrafficCsvDetailed", () => {
     expect(r.invalidRows[0].row).toBe(3);
     expect(r.invalidRows[1].row).toBe(5);
     expect(r.totalRows).toBe(4);
+  });
+
+  it("validateRow returns ok for a valid row object", () => {
+    const v = validateRow({
+      intersection: "Main",
+      period: "AM",
+      approach: "N",
+      inbound: 1,
+      outbound: 2,
+      total: 3,
+    });
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.row).toMatchObject({
+      intersection: "Main",
+      period: "AM",
+      approach: "N",
+      inbound: 1,
+      outbound: 2,
+      total: 3,
+    });
+  });
+
+  it("validateRow returns multiple issues for a malformed row (bad period + non-numeric total)", () => {
+    const v = validateRow({
+      intersection: "Main",
+      period: "RUSH",
+      inbound: 1,
+      outbound: 2,
+      total: "abc",
+    });
+    expect(v.ok).toBe(false);
+    if (v.ok) return;
+    expect(v.issues.length).toBeGreaterThanOrEqual(2);
+    expect(v.issues.some((i) => i.column === "period")).toBe(true);
+    expect(v.issues.some((i) => i.column === "total")).toBe(true);
   });
 
   it("collects multiple issues for a single row", () => {
