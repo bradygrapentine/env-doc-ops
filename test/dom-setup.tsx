@@ -8,6 +8,14 @@ afterEach(() => {
   cleanup();
 });
 
+// jsdom's URL.createObjectURL implementation calls blob.stream(), which the
+// Response polyfill in some Node versions doesn't expose. Tests don't care
+// about the URL value — only that the export-blob plumbing fires.
+if (typeof URL !== "undefined") {
+  URL.createObjectURL = vi.fn(() => "blob:mock") as typeof URL.createObjectURL;
+  URL.revokeObjectURL = vi.fn() as typeof URL.revokeObjectURL;
+}
+
 vi.mock("next/navigation", () => {
   const router = {
     push: vi.fn(),
