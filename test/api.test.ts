@@ -22,6 +22,7 @@ import { POST as regenerateSection } from "@/app/api/reports/[id]/sections/[sect
 import { POST as exportDocx } from "@/app/api/reports/[id]/export-docx/route";
 import { POST as exportPdf } from "@/app/api/reports/[id]/export-pdf/route";
 import { POST as signupRoute } from "@/app/api/auth/signup/route";
+import { POST as changePasswordRoute } from "@/app/api/auth/change-password/route";
 
 const SAMPLE_CSV = fs.readFileSync(
   path.join(process.cwd(), "sample_data/sample_traffic_counts.csv"),
@@ -527,6 +528,67 @@ describe("POST /api/auth/signup", () => {
     const projects = await list.json();
     expect(projects).toHaveLength(1);
     expect(projects[0].userId).toBe(body.id);
+  });
+});
+
+describe("POST /api/auth/change-password", () => {
+  it("rotates the password on valid input", async () => {
+    // Replace the seeded user with one whose current password is known.
+    resetDb();
+    const u = userRepo.create({
+      email: "cp@example.com",
+      name: "CP",
+      passwordHash: bcrypt.hashSync("oldpassword", 4),
+    });
+    process.env.AUTH_TEST_USER_ID = u.id;
+
+    const res = await changePasswordRoute(
+      jsonReq("POST", { currentPassword: "oldpassword", newPassword: "newpassword1" }),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+
+    const updated = userRepo.findByEmail("cp@example.com");
+    expect(updated).toBeTruthy();
+    expect(bcrypt.compareSync("newpassword1", updated!.passwordHash)).toBe(true);
+  });
+
+  it("rejects wrong currentPassword with 401", async () => {
+    resetDb();
+    const u = userRepo.create({
+      email: "cp2@example.com",
+      name: "CP2",
+      passwordHash: bcrypt.hashSync("oldpassword", 4),
+    });
+    process.env.AUTH_TEST_USER_ID = u.id;
+
+    const res = await changePasswordRoute(
+      jsonReq("POST", { currentPassword: "WRONG", newPassword: "newpassword1" }),
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe("Current password is incorrect");
+  });
+
+  it("rejects newPassword shorter than 8 chars with 400", async () => {
+    const res = await changePasswordRoute(
+      jsonReq("POST", { currentPassword: "password123", newPassword: "short" }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 401 with no session", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await changePasswordRoute(
+      jsonReq("POST", { currentPassword: "password123", newPassword: "newpassword1" }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 400 when currentPassword is missing", async () => {
+    const res = await changePasswordRoute(jsonReq("POST", { newPassword: "newpassword1" }));
+    expect(res.status).toBe(400);
   });
 });
 
