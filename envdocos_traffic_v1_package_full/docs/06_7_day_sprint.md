@@ -46,3 +46,19 @@
 4. Edit one section
 5. Export DOCX
 6. Ask: “How close is this to something useful?”
+
+---
+
+## Status — what actually shipped
+
+The 7-day plan above describes the V1 build (commit `e8085dd`, 2026-04-30). Everything past V1 is tracked in `docs/backlog.md` §3 (Shipped). High-level summary as of 2026-05-01:
+
+- **Auth** — Auth.js v5 + Credentials, email verification, forgot/reset password, change password, change email, account deletion.
+- **Sharing** — Per-project shares with `reader` and `editor` roles; share management is owner-only.
+- **Editor** — Drag-to-reorder, custom sections, per-section regenerate, refreshed/preserved banner.
+- **Exports** — DOCX with cover page + traffic tables; PDF mirroring DOCX.
+- **CSV** — Diff-preview before import; manual row CRUD inline on the project page.
+- **Audit** — Per-project activity feed (owner-only).
+- **Quality** — 333 unit tests, 11 Playwright E2E flows, CI runs lint/typecheck/test/coverage/build/E2E. Coverage thresholds enforced (libs 95% lines, api 90%, ui 85%).
+
+For the build order including post-V1 work, see `docs/plans/0001..0005-*.md`.

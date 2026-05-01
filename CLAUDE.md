@@ -4,47 +4,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository State
 
-Pre-implementation spec package. No app code, no `package.json`, no tests, no commits yet. The real Next.js app described by the docs has **not been built**.
+EnvDocOS Traffic V1 is built and shipped. The Next.js app lives at the repo root. Active work is tracked in `docs/backlog.md` and `docs/plans/`.
 
-Two top-level directories:
-
-- `envdocos_traffic_v1_package_full/` — **canonical spec package**. Read this first.
-- `envdocos_v1_retry/` — earlier stub (1-line `reportGenerator.ts`, 1-line spec). Treat as scratch unless the user says otherwise.
-
-## Build Prompt
-
-The authoritative build instruction for this project is `envdocos_traffic_v1_package_full/docs/07_claude_code_prompt.md`. When asked to "build EnvDocOS Traffic V1" or implement this app, follow that prompt — do not improvise scope.
+- `src/` — application code (Next.js 14 App Router + TypeScript).
+- `test/` — Vitest API tests + setup helpers.
+- `e2e/` — Playwright E2E flows.
+- `envdocos_traffic_v1_package_full/` — original spec package. Each doc has an "Addenda" section pointing at the current behavior; treat code as the source of truth.
+- `envdocos_v1_retry/` — early stub. Ignore.
 
 ## Product Constraints (do not violate)
 
-EnvDocOS Traffic V1 is a **report compiler**, not traffic engineering software. Per `docs/01_product_spec.md` and the build prompt:
+EnvDocOS Traffic is a **report compiler**, not traffic engineering software. Per `envdocos_traffic_v1_package_full/docs/01_product_spec.md`:
 
 - **Do not build:** traffic prediction, simulation, camera analytics, ML/forecasting, data collection.
-- **Do build:** CSV ingest → metrics → template-interpolated report sections → editable UI → DOCX export.
-- The output is a draft for a licensed engineer to review and stamp. Templates live in `docs/02_report_template.md`.
+- **Do build:** CSV ingest → metrics → template-interpolated report sections → editable UI → DOCX/PDF export.
+- Output is a draft for a licensed engineer to review and stamp. Templates live in `envdocos_traffic_v1_package_full/docs/02_report_template.md`.
 
-## Spec Map
+## Architecture
 
-When implementing, each doc owns one concern — consult them rather than re-deriving:
+- **Routes (App Router):** auth surface under `src/app/api/auth/*`; project surface under `src/app/api/projects/[id]/*`; reports under `src/app/api/reports/[id]/*`. UI under `src/app/{,projects/,reports/,account/,signin/,signup/,…}`.
+- **DB (`src/lib/db.ts`):** lazy better-sqlite3 singleton. Tables: `users`, `verification_tokens`, `password_reset_tokens`, `email_change_tokens`, `projects`, `traffic_counts`, `reports`, `report_sections`, `project_shares`, `audit_log`. Repos exported per concern (`projectRepo`, `reportRepo`, `userRepo`, `tokenRepo`, `shareRepo`, `auditRepo`). Migrations are idempotent ALTER-TABLE blocks gated on duplicate-column errors; the `project_shares.role` widen-to-editor migration recreates the table in place.
+- **Auth (`src/auth.ts`, `src/auth.config.ts`, `src/middleware.ts`):** Auth.js v5 with Credentials + bcryptjs. Edge-safe config split out so middleware doesn't pull in `bcryptjs`/`better-sqlite3`. Test backdoor: `AUTH_TEST_USER_ID` env var honored only when `NODE_ENV=test`.
+- **Access guards (`src/lib/session.ts`):** discriminated-union `Guard<T>`. `requireProjectAccess(id, "read"|"write")` returns 401/404/403 as appropriate; editors satisfy `write`, readers don't. Owner-only operations (delete, share management) check `guard.role !== "owner"` after a `read` guard.
+- **Email (`src/lib/email.ts`):** Resend wrapper with an `EMAIL_SINK=memory` mode for tests/E2E. Tests assert against `getCapturedEmails()`; the test-only endpoint at `/api/test-only/emails` exposes the sink to Playwright.
+- **Audit:** `auditRepo.log({projectId, userId, action, details})` is called inline from mutation routes. Owner-only `GET /api/projects/:id/audit` exposes the feed.
 
-- `docs/01_product_spec.md` — scope, inputs, success criteria
-- `docs/02_report_template.md` — section text and `{{placeholder}}` tokens (use these verbatim)
-- `docs/03_schema.md` — `Project`, `TrafficCountRow`, `Report`, `ReportSection`, `TrafficMetrics` types (mirrored in `src/types.ts`)
-- `docs/04_api_spec.md` — REST endpoints (`/api/projects`, `/api/projects/:id/traffic-data`, `/api/projects/:id/generate-report`, `/api/reports/:id`, `PATCH …/sections/:sectionId`, `/api/reports/:id/export-docx`)
-- `docs/05_ui_design.md` — four screens: create project, upload CSV, report editor (3-pane), export
-- `docs/06_7_day_sprint.md` — build order if working day-by-day
+## Stack
 
-## Stack (from build prompt + `package.example.json`)
-
-Next.js + TypeScript + TailwindCSS, PapaParse for CSV, `docx` + `file-saver` for export, in-memory or SQLite storage for V1. `package.example.json` is the seed for the real `package.json` — copy and rename when scaffolding.
-
-## Required Pages
-
-`/`, `/projects/new`, `/projects/[id]`, `/reports/[id]`.
+Next.js 14 (App Router) + TypeScript + TailwindCSS, better-sqlite3, Auth.js v5 (`next-auth@beta`) + bcryptjs, PapaParse, `docx` + `pdfkit` for export, `@dnd-kit/sortable` for editor reorder, Resend for email. Vitest 4 with `test.projects` (node + jsdom). Playwright + chromium for E2E.
 
 ## CSV Schema
-
-Minimum required columns (see spec — do not invent extras for V1):
 
 ```
 intersection,period,approach,inbound,outbound,total
@@ -54,4 +43,33 @@ intersection,period,approach,inbound,outbound,total
 
 ## Commands
 
-None yet — no `package.json`. After scaffolding, the seed scripts are `next dev` / `next build` / `next start`.
+```
+npm run dev         # next dev
+npm run build       # next build
+npm run start       # next start
+npm run lint        # next lint
+npm run typecheck   # tsc --noEmit
+npm test            # vitest run (node + jsdom projects)
+npm run test:coverage  # with v8 coverage; fails on threshold drop
+npm run e2e         # playwright test (uses prod build via webServer)
+npm run format      # prettier --write src
+npm run format:check
+npm run check       # lint + typecheck + test + format:check
+```
+
+Single test by name: `npx vitest run -t "describe substring"` or `npx vitest run path/to/file.test.ts`.
+
+## Coverage Thresholds (enforced in CI)
+
+- `src/lib/**` — 92 stmt / 78 br / 95 fn / **95 lines**
+- `src/app/api/**` — 85 / 75 / 80 / **90 lines**
+- `src/app/**` — 80 / 70 / 70 / **85 lines**
+
+Excluded with documented reasons: `src/auth.ts`, `src/auth.config.ts`, `src/middleware.ts`, the `[...nextauth]` trampoline, `src/app/api/test-only/emails`, server-component pages (covered via E2E), error/layout/global-error.tsx, `email.ts` (real send is integration-only), `types.ts`.
+
+## Conventions
+
+- Routes return `NextResponse.json({error}, {status})` for 4xx/5xx, plain `NextResponse` for 200/201, and `new Response(null, {status: 204})` for deletes.
+- Discriminated-union guards: read with `if (!guard.ok) return guard.error;` then access `guard.userId / guard.project / guard.report / guard.role`. Don't reintroduce `if ("error" in guard)`.
+- Project test fixtures must include `userId` (string or null). The test setup seeds a user and assigns its id to `AUTH_TEST_USER_ID` per test.
+- New mutation routes should call `auditRepo.log(...)` after the successful write.

@@ -17,7 +17,9 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 | Ready       | 0     |
 | In progress | 0     |
 | Blocked     | 0     |
-| Shipped     | 20    |
+| Shipped     | 24    |
+
+Last `/backlog-sync`: 2026-05-01
 
 ---
 
@@ -30,10 +32,10 @@ Followups noted during execution (low priority polish):
 - ~~**B-???-test-debt** — `ReportEditor.tsx` and `UploadCsv.tsx` are excluded from coverage.~~ Shipped: 12 ReportEditor + 8 UploadCsv tests; both removed from coverage exclusion list.
 - ~~**B-???-cpf-bug** — `e.currentTarget` post-await null in `ChangePasswordForm.tsx`.~~ Fixed: form ref captured synchronously; test-side `unhandledRejection` swallow removed.
 - ~~**B-???-edit-form** — `edit/page.tsx` could be split into `EditProjectForm.tsx`.~~ Shipped: extracted with 4 tests.
-- **Email change** — different from email-verification-on-signup; no flow yet.
-- **Read+write sharing role** — V1 sharing is read-only; read+write needs a conflict-resolution story.
-- **Account deletion** — no flow yet.
-- **Audit log of edits** — none.
+- ~~**Email change** — different from email-verification-on-signup; no flow yet.~~ Shipped: see B-043.
+- ~~**Read+write sharing role** — V1 sharing is read-only; read+write needs a conflict-resolution story.~~ Shipped: see B-044 (last-write-wins is the resolution story; lock down share management to owner-only).
+- ~~**Account deletion** — no flow yet.~~ Shipped: see B-045.
+- ~~**Audit log of edits** — none.~~ Shipped: see B-046.
 
 ---
 
@@ -51,6 +53,24 @@ If a stakeholder pushes for any of these, see `envdocos_traffic_v1_package_full/
 ---
 
 ## §3 Shipped
+
+- **B-046 — Audit log of edits** · `700af27` · 2026-05-01
+  New `audit_log` table + `auditRepo`. Mutation hooks on project update, traffic import, report (re)generate, section add/update/delete/reorder/regenerate, and share add/remove/role-change. Owner-only `GET /api/projects/:id/audit`. AuditPanel on the project page.
+
+- **B-045 — Account deletion** · `700af27` · 2026-05-01
+  `DELETE /api/auth/account` verifies the current password via bcrypt then drops the user; FK cascades clean projects, reports, shares, and tokens. `userRepo.delete` helper. New `DeleteAccountSection` armed via two-step confirmation; signs out via callback `/signin?deleted=1`.
+
+- **B-044 — Editor sharing role** · `700af27` · 2026-05-01
+  `ShareRole` and `ProjectAccessRole` widened to include `editor`. `requireProjectAccess(_, "write")` lets editors mutate content; share management and project deletion are owner-only. SQLite CHECK constraint widened via in-place migration that recreates `project_shares`. SharesPanel exposes role selectors for invite + per-share role change. New `PATCH /api/projects/:id/shares/:userId` endpoint.
+
+- **B-043 — Email change flow** · `700af27` · 2026-05-01
+  `email_change_tokens` table with 1-hour TTL. `POST /api/auth/change-email` verifies the current password, sends a confirmation link to the new address. `GET /api/auth/confirm-email-change` consumes the token and rotates the email; conflict (race with another signup) lands at `/account?email_change=conflict`. Account page exposes `ChangeEmailForm` and a status banner.
+
+- **Followups — coverage push to 95%** · `f03d768`, `700af27` · 2026-05-01
+  Component coverage on `ReportEditor`, `UploadCsv`, `TrafficRowsManager`, `SharesPanel`, `EditProjectForm`, plus tests for the new account/audit flows. 333 tests; 91.6% statements / 94.8% lines / 88% functions / 82% branches. Tightened thresholds: libs 95% lines, api 90%, ui 85%. `auth.ts`, the `[...nextauth]` trampoline, and the `test-only/emails` route excluded with documented reasons.
+
+- **Followups — ChangePasswordForm bug fix + EditProjectForm extraction** · `05bc0c3` · 2026-05-01
+  Captured `form = e.currentTarget` synchronously in `ChangePasswordForm` so `form.reset()` works after the awaited fetch. Removed the test-side `unhandledRejection` swallow that was hiding the bug. Extracted `EditProjectForm.tsx` from `edit/page.tsx` with 4 new tests.
 
 - **Phase 2 — Coverage gate + component/page tests** · `4db9a8e` · 2026-04-30
   Vitest projects split (node + jsdom). 67 new tests across components and pages. Coverage thresholds enforced in CI: `src/lib/**` 90/75/95/90, `src/app/api/**` 80/70/75/85, `src/app/**` 50/50/50/55. Targets relaxed from plan's 95/90/90/95 due to Auth.js v5 internal branches not reachable from unit tests + complex client components excluded for follow-up.

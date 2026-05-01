@@ -68,3 +68,18 @@ type TrafficMetrics = {
   totalPmVolume: number;
 };
 ```
+
+---
+
+## Addenda — additions shipped after V1 (current as of 2026-05-01)
+
+The shapes above are the original V1 spec. The live schema is in `src/lib/types.ts` and `src/lib/db.ts`. Concrete additions in the shipped product:
+
+- **User** — `id, email, name, createdAt, emailVerifiedAt?` + `passwordHash` (bcrypt) on the row but not the public type.
+- **Project** — gained `userId: string | null` (nullable to support the pre-auth seed flow that adopts orphans on first signup) and `manualInputs?: ManualInputs` (`{ growthRate?, tripGenAssumptions?, mitigationNotes?, engineerConclusions? }`).
+- **ReportSection** — gained `machineBaseline: string` (last machine-generated body, used by the regenerate-without-losing-edits planner) and `kind: 'standard' | 'custom'`.
+- **ShareRole** — `'reader' | 'editor'`. `ProjectAccessRole` adds `'owner'` for the implicit owner case.
+- **Tokens** — three single-use, time-bounded tables: `verification_tokens`, `password_reset_tokens`, `email_change_tokens`.
+- **Audit** — `audit_log(id, projectId, userId, action, details, createdAt)` with `AuditAction` covering the project / report / section / share mutation surface.
+
+Nothing in the original V1 schema was removed; the current code is a strict superset.

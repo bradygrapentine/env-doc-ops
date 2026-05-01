@@ -1079,10 +1079,9 @@ describe("Per-project sharing", () => {
     const project = await makeProject();
     const editorId = seedUser("editor@example.com");
     const ownerId = process.env.AUTH_TEST_USER_ID!;
-    const inv = await addShare(
-      jsonReq("POST", { email: "editor@example.com", role: "editor" }),
-      { params: { id: project.id } },
-    );
+    const inv = await addShare(jsonReq("POST", { email: "editor@example.com", role: "editor" }), {
+      params: { id: project.id },
+    });
     expect(inv.status).toBe(200);
     expect((await inv.json()).role).toBe("editor");
     process.env.AUTH_TEST_USER_ID = editorId;
@@ -1097,10 +1096,9 @@ describe("Per-project sharing", () => {
     const project = await makeProject();
     const editorId = seedUser("editor2@example.com");
     const ownerId = process.env.AUTH_TEST_USER_ID!;
-    await addShare(
-      jsonReq("POST", { email: "editor2@example.com", role: "editor" }),
-      { params: { id: project.id } },
-    );
+    await addShare(jsonReq("POST", { email: "editor2@example.com", role: "editor" }), {
+      params: { id: project.id },
+    });
     process.env.AUTH_TEST_USER_ID = editorId;
     const list = await listShares(emptyReq("GET"), { params: { id: project.id } });
     expect(list.status).toBe(403);
@@ -1139,10 +1137,9 @@ describe("Per-project sharing", () => {
   it("POST shares rejects invalid role string", async () => {
     const project = await makeProject();
     seedUser("rolepick@example.com");
-    const res = await addShare(
-      jsonReq("POST", { email: "rolepick@example.com", role: "admin" }),
-      { params: { id: project.id } },
-    );
+    const res = await addShare(jsonReq("POST", { email: "rolepick@example.com", role: "admin" }), {
+      params: { id: project.id },
+    });
     expect(res.status).toBe(400);
   });
   it("POST shares rejects missing email", async () => {
@@ -1347,9 +1344,7 @@ describe("Auth route input validation", () => {
   it("forgot-password swallows non-JSON and returns 200", async () => {
     delete process.env.AUTH_TEST_USER_ID;
     // Cast: forgotPasswordRoute expects NextRequest; helper returns Request shape.
-    const res = await forgotPasswordRoute(
-      nextJsonReq("POST", { email: "no-at-sign" }),
-    );
+    const res = await forgotPasswordRoute(nextJsonReq("POST", { email: "no-at-sign" }));
     expect(res.status).toBe(200);
   });
 
@@ -1385,7 +1380,10 @@ describe("Email change", () => {
     const tokenMatch = link.match(/token=([a-f0-9]+)/);
     expect(tokenMatch).not.toBeNull();
     const confirm = await confirmEmailChangeRoute(
-      nextEmptyReq("GET", `http://test.local/api/auth/confirm-email-change?token=${tokenMatch![1]}`),
+      nextEmptyReq(
+        "GET",
+        `http://test.local/api/auth/confirm-email-change?token=${tokenMatch![1]}`,
+      ),
     );
     expect(confirm.status).toBe(307);
     const loc = confirm.headers.get("location") ?? "";
