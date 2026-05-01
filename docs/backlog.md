@@ -14,7 +14,7 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 | State       | Count |
 | ----------- | ----- |
-| Ready       | 1     |
+| Ready       | 2     |
 | In progress | 0     |
 | Blocked     | 0     |
 | Shipped     | 27    |
@@ -30,6 +30,12 @@ Last `/backlog-sync`: 2026-05-01
 - **B-053 — Move rate limiter to a shared store before horizontal scale-out** · The B-050 limiter is per-Node-process (in-memory Map). On any multi-worker deploy (PM2 cluster, multiple containers, Vercel lambdas, Node `cluster`) an attacker round-robined across N workers gets N × 5 attempts per window. Swap `rate-limit.ts` for a Redis/Upstash-backed implementation behind the same `consume`/`resetSucceeded` API; `rate-limit-policy.ts` is the single point of change. Track this as **blocking before any non-single-process deploy.**
 
 <!-- B-051, B-052 shipped — see §3 Shipped -->
+
+- **B-054 — Cleanup from B-051 / B-052 closing review** · Four small items deferred from the post-merge audit:
+  1. `auditRepo.scrubUser` substring `LIKE` match + non-JSON fallback `split/join` is over-broad if a UUID ever appears as a substring of unrelated data. Either drop the fallback (assert details is JSON) or scope it. Latent — current data is always JSON.
+  2. `scrubUser` opens a `db().transaction(...)` even when called from `userRepo.delete`, which is already inside a transaction. Drop the inner transaction (callers wrap) or wrap the SELECT-loop too. SAVEPOINT makes this work today; clean up for clarity.
+  3. The email-change peek endpoint reads `email_change_tokens` directly via `_dbInternal()`. Add `tokenRepo.peekEmailChange(token)` and route through it so the schema lives in one place.
+  4. Add a test asserting `audit_log.createdAt` is preserved by `scrubUser` (existing tests cover `action` only).
 
 Followups noted during execution (low priority polish):
 
