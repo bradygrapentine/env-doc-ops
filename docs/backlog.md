@@ -15,9 +15,9 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 | State        | Count |
 |--------------|-------|
 | Ready        | 8     |
-| In progress  | 3     |
+| In progress  | 0     |
 | Blocked      | 0     |
-| Shipped      | 4     |
+| Shipped      | 8     |
 
 ---
 
@@ -27,9 +27,6 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 - **B-002 — Lint + format hygiene** · P1 · S
   Confirm `next lint` passes; add `eslint-config-next` rules and a Prettier config. Add `npm run check` aggregate.
-
-- **B-003 — Error boundary + 404 / 500 pages** · P1 · S · *(in progress — Track C)*
-  App Router `error.tsx`, `not-found.tsx` at root and per route group. Today an exception in a route handler shows the default Next error.
 
 ### Report quality (the actual deliverable)
 
@@ -44,14 +41,6 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 ### Project lifecycle
 
-- **B-020 — Project edit** · P0 · S · *(in progress — Track A)*
-  No way to update a project after creation. Add `PATCH /api/projects/:id` and an edit form on the project page.
-
-- **B-021 — Project delete** · P0 · S · *(in progress — Track A)*
-  `DELETE /api/projects/:id` with confirmation modal. Cascade is already in the SQLite schema.
-
-- **B-022 — Project search + sort on `/`** · P2 · S · *(in progress — Track B)*
-  Once there are >10 projects, the list is unusable. Client-side filter input + sort by name / created date.
 
 ### Data input
 
@@ -88,6 +77,18 @@ If a stakeholder pushes for any of these, see `envdocos_traffic_v1_package_full/
 ---
 
 ## §3 Shipped
+
+- **B-020 — Project edit** · `25d855c` · 2026-04-30
+  `PATCH /api/projects/:id` for editable fields, branded edit page prefilled from the existing project, ignores `id`/`createdAt` patches. 7 new API tests.
+
+- **B-021 — Project delete** · `25d855c` · 2026-04-30
+  `DELETE /api/projects/:id` with cascade verified end-to-end (project → traffic counts → reports → sections). Confirm modal on the project page.
+
+- **B-022 — Project search + sort on `/`** · `ef176fa` · 2026-04-30
+  Client-side filter (name/location/jurisdiction substring) + sort dropdown (newest, oldest, name A→Z, name Z→A). Empty state distinguishes "no projects yet" from "no matches."
+
+- **B-003 — Error boundary + 404/500 pages** · `76ed9e8` · 2026-04-30
+  Branded `error.tsx`, `not-found.tsx`, `global-error.tsx` matching the app's card aesthetic.
 
 - **B-011 — Regenerate report without losing edits** · `c36554a` · 2026-04-30
   Schema migration adds `machineBaseline`. Generate-report now merges fresh template output with user edits: sections that are reviewed/final, or whose content differs from the last machine output, are preserved. New `/generate-report/preview` endpoint powers a confirm modal, and the editor shows a refreshed/preserved banner.
