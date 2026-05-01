@@ -6,10 +6,13 @@ test("change password via /account, sign out, sign in with new password", async 
   const newPassword = "NewPassword456!";
 
   await page.goto("/account");
-  await page.locator('input[name="currentPassword"]').fill(user.password);
-  await page.locator('input[name="newPassword"]').fill(newPassword);
-  await page.locator('input[name="confirmPassword"]').fill(newPassword);
-  await page.getByRole("button", { name: /Update password/ }).click();
+  // Scope to the change-password form — /account also has change-email and
+  // delete-account forms with their own currentPassword inputs.
+  const form = page.locator("form").filter({ has: page.locator('input[name="newPassword"]') });
+  await form.locator('input[name="currentPassword"]').fill(user.password);
+  await form.locator('input[name="newPassword"]').fill(newPassword);
+  await form.locator('input[name="confirmPassword"]').fill(newPassword);
+  await form.getByRole("button", { name: /Update password/ }).click();
   await expect(page.getByText("Password updated.")).toBeVisible({ timeout: 10_000 });
 
   // Clear cookies (sign out) and sign in with new password.
