@@ -44,9 +44,20 @@ const SCHEMA_SQL = `
     "order" INTEGER NOT NULL,
     content TEXT NOT NULL,
     status TEXT NOT NULL,
+    machineBaseline TEXT,
     PRIMARY KEY (reportId, id)
   );
 `;
+
+function migrate(conn: Database.Database) {
+  try {
+    conn.exec(`ALTER TABLE report_sections ADD COLUMN machineBaseline TEXT`);
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (!/duplicate column name/i.test(msg)) throw e;
+  }
+  conn.exec(`UPDATE report_sections SET machineBaseline = content WHERE machineBaseline IS NULL`);
+}
 
 let _db: Database.Database | null = null;
 function dbPath(): string {
@@ -61,6 +72,7 @@ function db(): Database.Database {
   conn.pragma("journal_mode = WAL");
   conn.pragma("foreign_keys = ON");
   conn.exec(SCHEMA_SQL);
+  migrate(conn);
   _db = conn;
   return conn;
 }
@@ -129,9 +141,15 @@ export const reportRepo = {
       | undefined;
     if (!row) return undefined;
     const sections = conn
-      .prepare(`SELECT id, title, "order", content, status FROM report_sections WHERE reportId = ? ORDER BY "order"`)
+      .prepare(`SELECT id, title, "order", content, status, machineBaseline FROM report_sections WHERE reportId = ? ORDER BY "order"`)
       .all(id) as ReportSection[];
     return { ...row, sections };
+  },
+  getByProject(projectId: string): Report | undefined {
+    const conn = db();
+    const row = conn.prepare("SELECT id FROM reports WHERE projectId = ?").get(projectId) as { id: string } | undefined;
+    if (!row) return undefined;
+    return reportRepo.get(row.id);
   },
   upsertForProject(projectId: string, sections: ReportSection[]): Report {
     const conn = db();
@@ -146,8 +164,8 @@ export const reportRepo = {
         conn.prepare("INSERT INTO reports (id, projectId, createdAt, updatedAt) VALUES (?, ?, ?, ?)").run(reportId, projectId, ts, ts);
       }
       const insertSection = conn.prepare(`
-        INSERT INTO report_sections (id, reportId, title, "order", content, status)
-        VALUES (@id, @reportId, @title, @order, @content, @status)
+        INSERT INTO report_sections (id, reportId, title, "order", content, status, machineBaseline)
+        VALUES (@id, @reportId, @title, @order, @content, @status, @machineBaseline)
       `);
       for (const s of sections) insertSection.run({ ...s, reportId });
     });

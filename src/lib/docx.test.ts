@@ -20,9 +20,9 @@ const report: Report = {
   createdAt: "2026-04-30T00:00:00Z",
   updatedAt: "2026-04-30T00:00:00Z",
   sections: [
-    { id: "executive-summary", title: "Executive Summary", order: 1, content: "Body of exec summary.", status: "draft" },
-    { id: "existing-conditions", title: "Existing Conditions", order: 4, content: "Existing conditions body.", status: "draft" },
-    { id: "conclusion", title: "Conclusion", order: 8, content: "Body of conclusion.", status: "draft" },
+    { id: "executive-summary", title: "Executive Summary", order: 1, content: "Body of exec summary.", status: "draft", machineBaseline: "Body of exec summary." },
+    { id: "existing-conditions", title: "Existing Conditions", order: 4, content: "Existing conditions body.", status: "draft", machineBaseline: "Existing conditions body." },
+    { id: "conclusion", title: "Conclusion", order: 8, content: "Body of conclusion.", status: "draft", machineBaseline: "Body of conclusion." },
   ],
 };
 

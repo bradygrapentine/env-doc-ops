@@ -14,13 +14,11 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   const fresh = generateReportSections(project, rows);
   const existing = reportRepo.getByProject(params.id);
-  const { merged, refreshed, preserved } = planRegenerate(existing?.sections, fresh);
-  const report = reportRepo.upsertForProject(params.id, merged);
+  const { refreshed, preserved } = planRegenerate(existing?.sections, fresh);
 
+  const titlesById = new Map(fresh.map((s) => [s.id, s.title]));
   return NextResponse.json({
-    reportId: report.id,
-    sections: report.sections,
-    refreshed,
-    preserved,
+    refreshed: refreshed.map((id) => ({ id, title: titlesById.get(id) ?? id })),
+    preserved: preserved.map((id) => ({ id, title: titlesById.get(id) ?? id })),
   });
 }

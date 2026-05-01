@@ -8,6 +8,7 @@ import { POST as createProject, GET as listProjects } from "@/app/api/projects/r
 import { GET as getProject } from "@/app/api/projects/[id]/route";
 import { POST as uploadCsv } from "@/app/api/projects/[id]/traffic-data/route";
 import { POST as generateReport } from "@/app/api/projects/[id]/generate-report/route";
+import { POST as previewReport } from "@/app/api/projects/[id]/generate-report/preview/route";
 import { GET as getReport } from "@/app/api/reports/[id]/route";
 import { PATCH as patchSection } from "@/app/api/reports/[id]/sections/[sectionId]/route";
 import { POST as exportDocx } from "@/app/api/reports/[id]/export-docx/route";
@@ -114,12 +115,61 @@ describe("POST /api/projects/:id/generate-report", () => {
     const body = await res.json();
     expect(body.reportId).toBeTruthy();
     expect(body.sections).toHaveLength(8);
+    expect(body.refreshed).toHaveLength(8);
+    expect(body.preserved).toHaveLength(0);
+  });
+
+  it("preserves edited sections on regenerate", async () => {
+    const { project, reportId } = await makeReport();
+    await patchSection(jsonReq("PATCH", { content: "USER EDIT" }), {
+      params: { id: reportId, sectionId: "executive-summary" },
+    });
+    const res = await generateReport(emptyReq("POST"), { params: { id: project.id } });
+    const body = await res.json();
+    expect(body.preserved).toContain("executive-summary");
+    expect(body.refreshed).not.toContain("executive-summary");
+    const exec = body.sections.find((s: { id: string }) => s.id === "executive-summary");
+    expect(exec.content).toBe("USER EDIT");
+  });
+
+  it("preserves reviewed sections even if unedited", async () => {
+    const { project, reportId } = await makeReport();
+    await patchSection(jsonReq("PATCH", { status: "reviewed" }), {
+      params: { id: reportId, sectionId: "conclusion" },
+    });
+    const res = await generateReport(emptyReq("POST"), { params: { id: project.id } });
+    const body = await res.json();
+    expect(body.preserved).toContain("conclusion");
+    const conclusion = body.sections.find((s: { id: string }) => s.id === "conclusion");
+    expect(conclusion.status).toBe("reviewed");
   });
 
   it("rejects when no rows uploaded", async () => {
     const project = await makeProject();
     const res = await generateReport(emptyReq("POST"), { params: { id: project.id } });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/projects/:id/generate-report/preview", () => {
+  it("returns refreshed/preserved buckets without writing", async () => {
+    const { project, reportId } = await makeReport();
+    await patchSection(jsonReq("PATCH", { content: "USER EDIT" }), {
+      params: { id: reportId, sectionId: "executive-summary" },
+    });
+
+    const before = await getReport(emptyReq("GET"), { params: { id: reportId } });
+    const beforeBody = await before.json();
+
+    const res = await previewReport(emptyReq("POST"), { params: { id: project.id } });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.preserved.map((s: { id: string }) => s.id)).toContain("executive-summary");
+    expect(body.refreshed.map((s: { id: string }) => s.id)).not.toContain("executive-summary");
+
+    const after = await getReport(emptyReq("GET"), { params: { id: reportId } });
+    const afterBody = await after.json();
+    expect(afterBody.updatedAt).toBe(beforeBody.updatedAt);
   });
 });
 

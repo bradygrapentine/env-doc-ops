@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
 import type { Report, ReportSection, SectionStatus, TrafficMetrics } from "@/lib/types";
 
 const STATUSES: SectionStatus[] = ["draft", "reviewed", "final"];
@@ -10,6 +11,13 @@ export default function ReportEditor({ report, metrics }: { report: Report; metr
   const [activeId, setActiveId] = useState<string>(report.sections[0]?.id ?? "");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  const searchParams = useSearchParams();
+  const titleById = useMemo(() => new Map(report.sections.map((s) => [s.id, s.title])), [report.sections]);
+  const refreshed = (searchParams.get("refreshed") ?? "").split(",").filter(Boolean);
+  const preserved = (searchParams.get("preserved") ?? "").split(",").filter(Boolean);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const showBanner = !bannerDismissed && (refreshed.length > 0 || preserved.length > 0);
 
   const active = sections.find((s) => s.id === activeId);
 
@@ -53,6 +61,29 @@ export default function ReportEditor({ report, metrics }: { report: Report; metr
   if (metrics.totalPmVolume === 0) warnings.push("No PM-period rows.");
 
   return (
+    <div className="space-y-4">
+      {showBanner && (
+        <div className="rounded border bg-blue-50 p-4 text-sm flex items-start justify-between gap-4">
+          <div>
+            <strong>{refreshed.length}</strong> section{refreshed.length === 1 ? "" : "s"} refreshed
+            {preserved.length > 0 && (
+              <>
+                {" · "}<strong>{preserved.length}</strong> preserved (user-edited):{" "}
+                <span className="text-blue-900">
+                  {preserved.map((id) => titleById.get(id) ?? id).join(", ")}
+                </span>
+              </>
+            )}
+          </div>
+          <button
+            onClick={() => setBannerDismissed(true)}
+            className="text-blue-900 hover:underline shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
     <div className="grid grid-cols-12 gap-6">
       <aside className="col-span-12 lg:col-span-3 bg-white border rounded p-4 h-fit">
         <ul className="space-y-1">
@@ -133,6 +164,7 @@ export default function ReportEditor({ report, metrics }: { report: Report; metr
           </>
         )}
       </aside>
+    </div>
     </div>
   );
 }

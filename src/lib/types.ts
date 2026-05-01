@@ -41,6 +41,7 @@ export type ReportSection = {
   order: number;
   content: string;
   status: SectionStatus;
+  machineBaseline: string;
 };
 
 export type Report = {

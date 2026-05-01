@@ -87,6 +87,6 @@ The full V1 product spec is in `envdocos_traffic_v1_package_full/docs/`:
 ## V1 limits
 
 - Single-user, no auth.
-- Report regeneration overwrites the report; manual edits are lost. (V2: merge.)
+- Regenerating a report refreshes machine-generated draft sections; sections you've reviewed or edited are preserved (with a confirmation prompt before the run).
 - DOCX is plain heading + paragraph layout — no tables, no figures.
 - Trip generation, mitigation, conclusion sections are stub templates by design — to be filled by the engineer.
