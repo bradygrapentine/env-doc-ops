@@ -80,6 +80,9 @@ The full V1 product spec is in `envdocos_traffic_v1_package_full/docs/`:
 - `npm start` — production server
 - `npm run typecheck` — `tsc --noEmit`
 - `npm run lint` — Next.js ESLint
+- `npm test` — Vitest (31 unit + route tests)
+- `npm run test:watch` — Vitest watch mode
+- `npm run test:coverage` — Vitest with V8 coverage
 
 ## V1 limits
 

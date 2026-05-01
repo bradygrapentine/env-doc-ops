@@ -49,15 +49,27 @@ const SCHEMA_SQL = `
 `;
 
 let _db: Database.Database | null = null;
+function dbPath(): string {
+  return process.env.ENVDOCOS_DB_PATH ?? path.join(DATA_DIR, "envdocos.db");
+}
 function db(): Database.Database {
   if (_db) return _db;
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  const conn = new Database(path.join(DATA_DIR, "envdocos.db"));
+  const p = dbPath();
+  const dir = path.dirname(p);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const conn = new Database(p);
   conn.pragma("journal_mode = WAL");
   conn.pragma("foreign_keys = ON");
   conn.exec(SCHEMA_SQL);
   _db = conn;
   return conn;
+}
+
+export function closeDb(): void {
+  if (_db) {
+    _db.close();
+    _db = null;
+  }
 }
 
 const uid = () => (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36));
