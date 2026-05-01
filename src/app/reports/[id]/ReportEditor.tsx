@@ -16,6 +16,8 @@ export default function ReportEditor({
   const [sections, setSections] = useState<ReportSection[]>(report.sections);
   const [activeId, setActiveId] = useState<string>(report.sections[0]?.id ?? "");
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
 
@@ -39,6 +41,32 @@ export default function ReportEditor({
       body: JSON.stringify({ content: section.content, status: section.status }),
     });
     setSavingId(null);
+  }
+
+  async function regenerateSection(section: ReportSection) {
+    const ok = window.confirm(
+      "Replace this section's text with the latest auto-generated draft? Your edits to this section will be lost.",
+    );
+    if (!ok) return;
+    setRegenerateError(null);
+    setRegeneratingId(section.id);
+    try {
+      const res = await fetch(`/api/reports/${report.id}/sections/${section.id}/regenerate`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        setRegenerateError(body?.error ?? "Regenerate failed");
+        return;
+      }
+      const updated = (await res.json()) as Report;
+      const fresh = updated.sections.find((s) => s.id === section.id);
+      if (fresh) {
+        setSections((prev) => prev.map((s) => (s.id === section.id ? fresh : s)));
+      }
+    } finally {
+      setRegeneratingId(null);
+    }
   }
 
   function updateActive(patch: Partial<ReportSection>) {
@@ -183,6 +211,16 @@ export default function ReportEditor({
               />
               <div className="mt-3 flex justify-end items-center gap-3">
                 {savingId === active.id && <span className="text-xs text-gray-500">Saving…</span>}
+                {regeneratingId === active.id && (
+                  <span className="text-xs text-gray-500">Regenerating…</span>
+                )}
+                <button
+                  onClick={() => regenerateSection(active)}
+                  disabled={regeneratingId === active.id}
+                  className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Regenerate from data
+                </button>
                 <button
                   onClick={() => saveSection(active)}
                   className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
@@ -190,6 +228,9 @@ export default function ReportEditor({
                   Save section
                 </button>
               </div>
+              {regenerateError && (
+                <div className="mt-2 text-xs text-red-600 text-right">{regenerateError}</div>
+              )}
             </>
           ) : (
             <div className="text-gray-500">No section selected.</div>

@@ -18,6 +18,7 @@ import { POST as generateReport } from "@/app/api/projects/[id]/generate-report/
 import { POST as previewReport } from "@/app/api/projects/[id]/generate-report/preview/route";
 import { GET as getReport } from "@/app/api/reports/[id]/route";
 import { PATCH as patchSection } from "@/app/api/reports/[id]/sections/[sectionId]/route";
+import { POST as regenerateSection } from "@/app/api/reports/[id]/sections/[sectionId]/regenerate/route";
 import { POST as exportDocx } from "@/app/api/reports/[id]/export-docx/route";
 import { POST as exportPdf } from "@/app/api/reports/[id]/export-pdf/route";
 import { POST as signupRoute } from "@/app/api/auth/signup/route";
@@ -354,6 +355,80 @@ describe("PATCH /api/reports/:id/sections/:sectionId", () => {
       params: { id: reportId, sectionId: "executive-summary" },
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/reports/:id/sections/:sectionId/regenerate", () => {
+  it("replaces edited section with fresh template output and resets status to draft", async () => {
+    const { reportId, sections } = await makeReport();
+    // Edit two sections first.
+    await patchSection(jsonReq("PATCH", { content: "USER EDIT", status: "reviewed" }), {
+      params: { id: reportId, sectionId: "executive-summary" },
+    });
+    await patchSection(jsonReq("PATCH", { content: "OTHER EDIT", status: "final" }), {
+      params: { id: reportId, sectionId: "project-description" },
+    });
+    const original = sections.find((s: { id: string }) => s.id === "executive-summary");
+
+    const res = await regenerateSection(emptyReq("POST"), {
+      params: { id: reportId, sectionId: "executive-summary" },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const target = body.sections.find((s: { id: string }) => s.id === "executive-summary");
+    expect(target.content).toBe(original.content);
+    expect(target.status).toBe("draft");
+    // Other edited section untouched.
+    const other = body.sections.find((s: { id: string }) => s.id === "project-description");
+    expect(other.content).toBe("OTHER EDIT");
+    expect(other.status).toBe("final");
+  });
+
+  it("returns 404 for unknown report id", async () => {
+    const res = await regenerateSection(emptyReq("POST"), {
+      params: { id: "nope", sectionId: "executive-summary" },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 with template message for unknown section id", async () => {
+    const { reportId } = await makeReport();
+    const res = await regenerateSection(emptyReq("POST"), {
+      params: { id: reportId, sectionId: "not-a-real-section" },
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toBe("Section not found in current template");
+  });
+
+  it("returns 400 when project has no traffic rows", async () => {
+    const { reportId, project } = await makeReport();
+    // Wipe rows.
+    const { trafficRepo } = await import("@/lib/db");
+    trafficRepo.replaceForProject(project.id, []);
+    const res = await regenerateSection(emptyReq("POST"), {
+      params: { id: reportId, sectionId: "executive-summary" },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 for cross-user report (no existence leak)", async () => {
+    const { reportId } = await makeReport();
+    const userBId = seedUser("regen-b@example.com");
+    process.env.AUTH_TEST_USER_ID = userBId;
+    const res = await regenerateSection(emptyReq("POST"), {
+      params: { id: reportId, sectionId: "executive-summary" },
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    const { reportId } = await makeReport();
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await regenerateSection(emptyReq("POST"), {
+      params: { id: reportId, sectionId: "executive-summary" },
+    });
+    expect(res.status).toBe(401);
   });
 });
 
