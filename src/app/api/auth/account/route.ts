@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { userRepo } from "@/lib/db";
 import { getSessionUserId } from "@/lib/session";
+import { gatePasswordEndpoint } from "@/lib/rate-limit-policy";
 
 export async function DELETE(req: Request) {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const blocked = gatePasswordEndpoint(userId, "account-delete");
+  if (blocked) return blocked;
 
   const body = (await req.json().catch(() => null)) as { currentPassword?: unknown } | null;
   const currentPassword = body?.currentPassword;

@@ -4,12 +4,16 @@ import { userRepo } from "@/lib/db";
 import { tokenRepo } from "@/lib/tokens";
 import { emailLinkBase, sendEmailChangeConfirmation } from "@/lib/email";
 import { getSessionUserId } from "@/lib/session";
+import { clearPasswordRateLimit, gatePasswordEndpoint } from "@/lib/rate-limit-policy";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(req: Request) {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const blocked = gatePasswordEndpoint(userId, "change-email");
+  if (blocked) return blocked;
 
   const body = (await req.json().catch(() => null)) as {
     newEmail?: unknown;
@@ -39,6 +43,7 @@ export async function POST(req: Request) {
   if (!full || !(await bcrypt.compare(currentPassword, full.passwordHash))) {
     return NextResponse.json({ error: "Current password is incorrect" }, { status: 401 });
   }
+  clearPasswordRateLimit(userId, "change-email");
 
   if (userRepo.findByEmail(newEmail)) {
     return NextResponse.json({ error: "Email already in use" }, { status: 409 });

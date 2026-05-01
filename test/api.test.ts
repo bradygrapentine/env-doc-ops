@@ -43,6 +43,7 @@ import { POST as sendVerificationRoute } from "@/app/api/auth/send-verification/
 import { GET as verifyEmailRoute } from "@/app/api/auth/verify-email/route";
 import { tokenRepo } from "@/lib/tokens";
 import { getCapturedEmails, clearCapturedEmails } from "@/lib/email";
+import { _resetForTest as _resetRateLimit } from "@/lib/rate-limit";
 import { GET as listShares, POST as addShare } from "@/app/api/projects/[id]/shares/route";
 import {
   PATCH as patchShare,
@@ -92,6 +93,7 @@ function seedUser(email = "test@example.com"): string {
 beforeEach(() => {
   resetDb();
   clearCapturedEmails();
+  _resetRateLimit();
   process.env.AUTH_TEST_USER_ID = seedUser();
 });
 
@@ -1532,6 +1534,89 @@ describe("Audit log", () => {
       nextEmptyReq("GET", `http://test.local/api/auth/confirm-email-change?token=${token}`),
     );
     expect(confirm.headers.get("location")).toContain("email_change=conflict");
+  });
+});
+
+describe("Rate limiting on password-bearing endpoints", () => {
+  it("change-password 429s after 5 wrong attempts in the window", async () => {
+    for (let i = 0; i < 5; i++) {
+      const res = await changePasswordRoute(
+        jsonReq("POST", { currentPassword: "wrong", newPassword: "newpassword1" }),
+      );
+      expect(res.status).toBe(401);
+    }
+    const res = await changePasswordRoute(
+      jsonReq("POST", { currentPassword: "wrong", newPassword: "newpassword1" }),
+    );
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toMatch(/^\d+$/);
+  });
+
+  it("change-password 429 doesn't reveal whether the password was correct", async () => {
+    for (let i = 0; i < 5; i++) {
+      await changePasswordRoute(
+        jsonReq("POST", { currentPassword: "wrong", newPassword: "newpassword1" }),
+      );
+    }
+    // 6th call with the *correct* password — must still be 429, not 200.
+    // Otherwise an attacker mid-rate-limit could probe to identify the
+    // correct password by watching the status code change.
+    const res = await changePasswordRoute(
+      jsonReq("POST", { currentPassword: "password123", newPassword: "newpassword1" }),
+    );
+    expect(res.status).toBe(429);
+  });
+
+  it("change-password rate limit is per-user", async () => {
+    const otherUserId = seedUser("otheruser@example.com");
+    for (let i = 0; i < 5; i++) {
+      await changePasswordRoute(
+        jsonReq("POST", { currentPassword: "wrong", newPassword: "newpassword1" }),
+      );
+    }
+    process.env.AUTH_TEST_USER_ID = otherUserId;
+    // Other user is unaffected.
+    const res = await changePasswordRoute(
+      jsonReq("POST", { currentPassword: "wrong", newPassword: "newpassword1" }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("change-password successful password verification resets the counter", async () => {
+    for (let i = 0; i < 4; i++) {
+      await changePasswordRoute(
+        jsonReq("POST", { currentPassword: "wrong", newPassword: "newpassword1" }),
+      );
+    }
+    // Successful change clears the bucket; subsequent typos shouldn't carry over.
+    const ok = await changePasswordRoute(
+      jsonReq("POST", { currentPassword: "password123", newPassword: "newpassword1" }),
+    );
+    expect(ok.status).toBe(200);
+    for (let i = 0; i < 5; i++) {
+      const res = await changePasswordRoute(
+        jsonReq("POST", { currentPassword: "wrong", newPassword: "newpassword2" }),
+      );
+      expect(res.status).toBe(401);
+    }
+  });
+
+  it("change-email 429s after 5 wrong attempts", async () => {
+    for (let i = 0; i < 5; i++) {
+      await changeEmailRoute(jsonReq("POST", { newEmail: "x@y.com", currentPassword: "wrong" }));
+    }
+    const res = await changeEmailRoute(
+      jsonReq("POST", { newEmail: "x@y.com", currentPassword: "wrong" }),
+    );
+    expect(res.status).toBe(429);
+  });
+
+  it("account-delete 429s after 5 wrong attempts", async () => {
+    for (let i = 0; i < 5; i++) {
+      await deleteAccountRoute(jsonReq("DELETE", { currentPassword: "wrong" }));
+    }
+    const res = await deleteAccountRoute(jsonReq("DELETE", { currentPassword: "wrong" }));
+    expect(res.status).toBe(429);
   });
 });
 
