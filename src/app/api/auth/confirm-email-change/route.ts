@@ -12,10 +12,20 @@ export async function GET(req: Request) {
   if ("error" in result) {
     return NextResponse.redirect(new URL(`/account?email_change=${result.error}`, url.origin));
   }
-  // Race: someone else might have grabbed the email between createEmailChange and now.
+  // Two layers of conflict handling: a fast-path read so the common case
+  // returns conflict cleanly, and a try/catch so the narrow TOCTOU window
+  // (concurrent UPDATE racing past the read) also surfaces as conflict
+  // instead of a 500. users.email has a UNIQUE constraint that backs this.
   if (userRepo.findByEmail(result.newEmail)) {
     return NextResponse.redirect(new URL("/account?email_change=conflict", url.origin));
   }
-  userRepo.updateEmail(result.userId, result.newEmail);
+  try {
+    userRepo.updateEmail(result.userId, result.newEmail);
+  } catch (err) {
+    if ((err as Error).message?.includes("UNIQUE constraint failed")) {
+      return NextResponse.redirect(new URL("/account?email_change=conflict", url.origin));
+    }
+    throw err;
+  }
   return NextResponse.redirect(new URL("/account?email_change=ok", url.origin));
 }

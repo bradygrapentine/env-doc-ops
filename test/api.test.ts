@@ -1421,6 +1421,17 @@ describe("Email change", () => {
     expect(res.status).toBe(409);
   });
 
+  it("change-email runs bcrypt before the email-conflict check (no enumeration)", async () => {
+    // If the route 409'd before checking the password, an attacker could probe
+    // arbitrary emails with a junk password and tell which exist. Verify the
+    // password check fires first by sending a wrong password + a taken email.
+    seedUser("alreadymine@example.com");
+    const res = await changeEmailRoute(
+      jsonReq("POST", { newEmail: "alreadymine@example.com", currentPassword: "wrong" }),
+    );
+    expect(res.status).toBe(401);
+  });
+
   it("change-email requires a session", async () => {
     delete process.env.AUTH_TEST_USER_ID;
     const res = await changeEmailRoute(
@@ -1488,6 +1499,39 @@ describe("Audit log", () => {
   it("returns 404 when the project doesn't exist", async () => {
     const res = await listAuditRoute(emptyReq("GET"), { params: { id: "nope" } });
     expect(res.status).toBe(404);
+  });
+
+  it("project.delete is recorded and survives the cascade", async () => {
+    const project = await makeProject();
+    const projectId = project.id;
+    const ownerId = process.env.AUTH_TEST_USER_ID!;
+    const del = await deleteProject(emptyReq("DELETE"), { params: { id: projectId } });
+    expect(del.status).toBe(204);
+    // Project is gone, but the audit row about its deletion survives because
+    // audit_log.projectId has no FK reference. Re-create a fresh project so
+    // we have something to compare; query the repo directly for verification.
+    const { auditRepo } = await import("@/lib/db");
+    const rows = auditRepo.listForProject(projectId);
+    expect(rows.some((r) => r.action === "project.delete")).toBe(true);
+    expect(ownerId).toBeTruthy();
+  });
+
+  it("confirm-email-change handles a UNIQUE-constraint race as conflict", async () => {
+    // Issue a valid token, but seed the new email on another user before the
+    // token is consumed. The fast-path `findByEmail` catches it; this test
+    // exists so we notice if that fast path is removed (the catch becomes the
+    // only line of defense).
+    clearCapturedEmails();
+    const res = await changeEmailRoute(
+      jsonReq("POST", { newEmail: "raceme@example.com", currentPassword: "password123" }),
+    );
+    expect(res.status).toBe(200);
+    const token = getCapturedEmails()[0]!.link.match(/token=([a-f0-9]+)/)![1];
+    seedUser("raceme@example.com"); // race: someone else just took the email
+    const confirm = await confirmEmailChangeRoute(
+      nextEmptyReq("GET", `http://test.local/api/auth/confirm-email-change?token=${token}`),
+    );
+    expect(confirm.headers.get("location")).toContain("email_change=conflict");
   });
 });
 

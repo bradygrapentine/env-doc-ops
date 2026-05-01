@@ -31,13 +31,17 @@ export async function POST(req: Request) {
   if (user.email === newEmail) {
     return NextResponse.json({ error: "New email matches current email" }, { status: 400 });
   }
-  if (userRepo.findByEmail(newEmail)) {
-    return NextResponse.json({ error: "Email already in use" }, { status: 409 });
-  }
 
+  // Verify the password BEFORE checking for an email conflict — otherwise the
+  // 409 short-circuits the bcrypt call, letting an authenticated attacker
+  // probe whether arbitrary emails exist on the system in a fast loop.
   const full = userRepo.findByEmail(user.email);
   if (!full || !(await bcrypt.compare(currentPassword, full.passwordHash))) {
     return NextResponse.json({ error: "Current password is incorrect" }, { status: 401 });
+  }
+
+  if (userRepo.findByEmail(newEmail)) {
+    return NextResponse.json({ error: "Email already in use" }, { status: 409 });
   }
 
   const { token } = tokenRepo.createEmailChange(userId, newEmail);

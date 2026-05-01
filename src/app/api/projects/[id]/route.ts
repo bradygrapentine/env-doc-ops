@@ -104,6 +104,15 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if (guard.role !== "owner") {
     return NextResponse.json({ error: "Owner-only" }, { status: 403 });
   }
+  // Log BEFORE delete: audit_log.projectId has no FK so the row survives,
+  // but logging first also avoids the (small) ordering risk of inserting
+  // into a path the user can no longer see.
+  auditRepo.log({
+    projectId: params.id,
+    userId: guard.userId,
+    action: "project.delete",
+    details: { name: guard.project.name },
+  });
   projectRepo.delete(params.id);
   return new Response(null, { status: 204 });
 }

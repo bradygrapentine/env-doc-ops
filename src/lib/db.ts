@@ -49,9 +49,14 @@ const SCHEMA_SQL = `
     usedAt TEXT
   );
 
+  -- audit_log.projectId intentionally has no FK reference. If a project is
+  -- deleted, its audit rows must survive so the owner can still see "what
+  -- happened, including the delete" — a CASCADE here would silently wipe the
+  -- very row that recorded the deletion. userId uses ON DELETE SET NULL so
+  -- account deletion preserves the audit trail with attribution dropped.
   CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY,
-    projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    projectId TEXT NOT NULL,
     userId TEXT REFERENCES users(id) ON DELETE SET NULL,
     action TEXT NOT NULL,
     details TEXT,
@@ -161,20 +166,50 @@ function migrate(conn: Database.Database) {
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'project_shares'")
     .get() as { sql?: string } | undefined;
   if (sharesDef?.sql && !sharesDef.sql.includes("'editor'")) {
-    conn.exec(`
-      CREATE TABLE project_shares__new (
-        projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        userId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        role TEXT NOT NULL CHECK(role IN ('reader','editor')),
-        createdAt TEXT NOT NULL,
-        PRIMARY KEY (projectId, userId)
-      );
-      INSERT INTO project_shares__new (projectId, userId, role, createdAt)
-        SELECT projectId, userId, role, createdAt FROM project_shares;
-      DROP TABLE project_shares;
-      ALTER TABLE project_shares__new RENAME TO project_shares;
-      CREATE INDEX IF NOT EXISTS idx_shares_user ON project_shares(userId);
-    `);
+    // Wrap in a transaction so a crash between DROP and RENAME doesn't
+    // leave the database without a project_shares table. better-sqlite3's
+    // conn.exec on multi-statement SQL is NOT implicitly transactional.
+    conn.transaction(() => {
+      conn.exec(`
+        CREATE TABLE project_shares__new (
+          projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          userId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          role TEXT NOT NULL CHECK(role IN ('reader','editor')),
+          createdAt TEXT NOT NULL,
+          PRIMARY KEY (projectId, userId)
+        );
+        INSERT INTO project_shares__new (projectId, userId, role, createdAt)
+          SELECT projectId, userId, role, createdAt FROM project_shares;
+        DROP TABLE project_shares;
+        ALTER TABLE project_shares__new RENAME TO project_shares;
+        CREATE INDEX IF NOT EXISTS idx_shares_user ON project_shares(userId);
+      `);
+    })();
+  }
+
+  // Drop the audit_log.projectId FK if a previous schema had it. The first
+  // shipped audit_log used ON DELETE CASCADE which silently wiped the
+  // project.delete row alongside the project. Rebuild without the FK.
+  const auditDef = conn
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'audit_log'")
+    .get() as { sql?: string } | undefined;
+  if (auditDef?.sql && /REFERENCES\s+projects/i.test(auditDef.sql)) {
+    conn.transaction(() => {
+      conn.exec(`
+        CREATE TABLE audit_log__new (
+          id TEXT PRIMARY KEY,
+          projectId TEXT NOT NULL,
+          userId TEXT REFERENCES users(id) ON DELETE SET NULL,
+          action TEXT NOT NULL,
+          details TEXT,
+          createdAt TEXT NOT NULL
+        );
+        INSERT INTO audit_log__new SELECT id, projectId, userId, action, details, createdAt FROM audit_log;
+        DROP TABLE audit_log;
+        ALTER TABLE audit_log__new RENAME TO audit_log;
+        CREATE INDEX IF NOT EXISTS idx_audit_project ON audit_log(projectId, createdAt);
+      `);
+    })();
   }
 }
 
