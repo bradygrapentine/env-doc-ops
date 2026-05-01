@@ -115,4 +115,62 @@ describe("generateReportSections", () => {
     expect(c.content).toBe("Engineer signed-off conclusion.");
     expect(c.machineBaseline).toBe("Engineer signed-off conclusion.");
   });
+
+  it("appends growthRate sentence to impact-analysis when set", () => {
+    const p2: Project = {
+      ...project,
+      manualInputs: { growthRate: "1.5% per year" },
+    };
+    const sections = generateReportSections(p2, []);
+    const ia = sections.find((s) => s.id === "impact-analysis")!;
+    expect(ia.content).toContain("Intersections with higher existing volumes");
+    expect(ia.content).toContain("1.5% per year");
+  });
+
+  it("impact-analysis machineBaseline equals content when growthRate is set", () => {
+    const p2: Project = {
+      ...project,
+      manualInputs: { growthRate: "2% per year" },
+    };
+    const sections = generateReportSections(p2, []);
+    const ia = sections.find((s) => s.id === "impact-analysis")!;
+    expect(ia.machineBaseline).toBe(ia.content);
+  });
+
+  it("impact-analysis content matches canned text exactly when growthRate is unset", () => {
+    const sections = generateReportSections(project, []);
+    const ia = sections.find((s) => s.id === "impact-analysis")!;
+    expect(ia.content).toBe(
+      `Based on the available count data and preliminary project information, the proposed project may affect operations at selected study intersections. Intersections with higher existing volumes or larger projected increases should be reviewed further by the project traffic engineer.`,
+    );
+  });
+
+  it("appends mitigationNotes paragraph to mitigation when set", () => {
+    const p2: Project = {
+      ...project,
+      manualInputs: { mitigationNotes: "Add eastbound left turn lane at 1st & Main." },
+    };
+    const sections = generateReportSections(p2, []);
+    const mit = sections.find((s) => s.id === "mitigation")!;
+    expect(mit.content).toContain("signal timing review");
+    expect(mit.content).toContain("Engineer notes: Add eastbound left turn lane at 1st & Main.");
+  });
+
+  it("mitigation machineBaseline equals content when mitigationNotes is set", () => {
+    const p2: Project = {
+      ...project,
+      manualInputs: { mitigationNotes: "Coordinate signals on Main St." },
+    };
+    const sections = generateReportSections(p2, []);
+    const mit = sections.find((s) => s.id === "mitigation")!;
+    expect(mit.machineBaseline).toBe(mit.content);
+  });
+
+  it("mitigation content matches canned text exactly when mitigationNotes is unset", () => {
+    const sections = generateReportSections(project, []);
+    const mit = sections.find((s) => s.id === "mitigation")!;
+    expect(mit.content).toBe(
+      `Potential mitigation measures may include signal timing review, access management adjustments, turn lane evaluation, pedestrian improvements, or additional operational analysis. Final mitigation recommendations should be confirmed by the responsible traffic engineer.`,
+    );
+  });
 });
