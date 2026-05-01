@@ -106,6 +106,28 @@ export const projectRepo = {
     });
     return project;
   },
+  update(id: string, patch: Partial<Omit<Project, "id" | "createdAt">>): Project | undefined {
+    const conn = db();
+    const existing = conn.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined;
+    if (!existing) return undefined;
+    const allowed = ["name", "location", "jurisdiction", "clientName", "projectType", "developmentSummary", "preparedBy"] as const;
+    const fields: string[] = [];
+    const values: (string | null)[] = [];
+    for (const key of allowed) {
+      if (key in patch) {
+        fields.push(`${key} = ?`);
+        const v = patch[key];
+        values.push(v === undefined ? null : (v as string));
+      }
+    }
+    if (fields.length === 0) return existing;
+    conn.prepare(`UPDATE projects SET ${fields.join(", ")} WHERE id = ?`).run(...values, id);
+    return conn.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project;
+  },
+  delete(id: string): boolean {
+    const info = db().prepare("DELETE FROM projects WHERE id = ?").run(id);
+    return info.changes > 0;
+  },
 };
 
 export const trafficRepo = {
