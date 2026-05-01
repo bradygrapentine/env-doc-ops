@@ -25,6 +25,98 @@ export type DetailedParseResult = {
 
 const PERIODS: Period[] = ["AM", "PM", "MIDDAY", "OTHER"];
 
+export type ValidateRowResult =
+  | { ok: true; row: ParsedTrafficRow }
+  | { ok: false; issues: RowIssue[] };
+
+/**
+ * Pure row-level validator used by both the CSV parsers and the
+ * single-row API endpoints. `rowNum` is the human-facing row number
+ * used in issue messages; defaults to 0 for non-CSV callers.
+ */
+export function validateRow(
+  raw: Record<string, unknown> | null | undefined,
+  rowNum = 0,
+): ValidateRowResult {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const issues: RowIssue[] = [];
+
+  const periodRawAny = r.period;
+  const periodRaw =
+    typeof periodRawAny === "string" ? periodRawAny.trim() : String(periodRawAny ?? "").trim();
+  const period = periodRaw.toUpperCase();
+  if (!PERIODS.includes(period as Period)) {
+    issues.push({
+      row: rowNum,
+      column: "period",
+      message: `Invalid period "${periodRawAny ?? ""}". Expected one of ${PERIODS.join(", ")}.`,
+    });
+  }
+
+  const inbound = Number(r.inbound);
+  const outbound = Number(r.outbound);
+  const total = Number(r.total);
+
+  if (!Number.isFinite(inbound)) {
+    issues.push({
+      row: rowNum,
+      column: "inbound",
+      message: `inbound must be a number (got "${r.inbound ?? ""}").`,
+    });
+  }
+  if (!Number.isFinite(outbound)) {
+    issues.push({
+      row: rowNum,
+      column: "outbound",
+      message: `outbound must be a number (got "${r.outbound ?? ""}").`,
+    });
+  }
+  if (!Number.isFinite(total)) {
+    issues.push({
+      row: rowNum,
+      column: "total",
+      message: `total must be a number (got "${r.total ?? ""}").`,
+    });
+  }
+
+  const intersectionRaw = r.intersection;
+  const intersection =
+    typeof intersectionRaw === "string"
+      ? intersectionRaw.trim()
+      : intersectionRaw == null
+        ? ""
+        : String(intersectionRaw).trim();
+  if (!intersection) {
+    issues.push({
+      row: rowNum,
+      column: "intersection",
+      message: "intersection is required.",
+    });
+  }
+
+  if (issues.length > 0) return { ok: false, issues };
+
+  const approachRaw = r.approach;
+  const approach =
+    typeof approachRaw === "string"
+      ? approachRaw.trim() || undefined
+      : approachRaw == null
+        ? undefined
+        : String(approachRaw).trim() || undefined;
+
+  return {
+    ok: true,
+    row: {
+      intersection,
+      period: period as Period,
+      approach,
+      inbound,
+      outbound,
+      total,
+    },
+  };
+}
+
 export function parseTrafficCsvDetailed(text: string): DetailedParseResult {
   const result = Papa.parse<Record<string, string>>(text.trim(), {
     header: true,
@@ -61,64 +153,11 @@ export function parseTrafficCsvDetailed(text: string): DetailedParseResult {
   for (let i = 0; i < result.data.length; i++) {
     const r = result.data[i];
     const rowNum = i + 2;
-    const issues: RowIssue[] = [];
-
-    const periodRaw = (r.period ?? "").trim();
-    const period = periodRaw.toUpperCase();
-    if (!PERIODS.includes(period as Period)) {
-      issues.push({
-        row: rowNum,
-        column: "period",
-        message: `Invalid period "${r.period ?? ""}". Expected one of ${PERIODS.join(", ")}.`,
-      });
-    }
-
-    const inbound = Number(r.inbound);
-    const outbound = Number(r.outbound);
-    const total = Number(r.total);
-
-    if (!Number.isFinite(inbound)) {
-      issues.push({
-        row: rowNum,
-        column: "inbound",
-        message: `inbound must be a number (got "${r.inbound ?? ""}").`,
-      });
-    }
-    if (!Number.isFinite(outbound)) {
-      issues.push({
-        row: rowNum,
-        column: "outbound",
-        message: `outbound must be a number (got "${r.outbound ?? ""}").`,
-      });
-    }
-    if (!Number.isFinite(total)) {
-      issues.push({
-        row: rowNum,
-        column: "total",
-        message: `total must be a number (got "${r.total ?? ""}").`,
-      });
-    }
-
-    const intersection = (r.intersection ?? "").trim();
-    if (!intersection) {
-      issues.push({
-        row: rowNum,
-        column: "intersection",
-        message: "intersection is required.",
-      });
-    }
-
-    if (issues.length === 0) {
-      validRows.push({
-        intersection,
-        period: period as Period,
-        approach: r.approach?.trim() || undefined,
-        inbound,
-        outbound,
-        total,
-      });
+    const v = validateRow(r, rowNum);
+    if (v.ok) {
+      validRows.push(v.row);
     } else {
-      invalidRows.push({ row: rowNum, raw: r, issues });
+      invalidRows.push({ row: rowNum, raw: r, issues: v.issues });
     }
   }
 

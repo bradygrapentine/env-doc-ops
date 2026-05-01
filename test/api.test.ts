@@ -13,6 +13,11 @@ import {
   DELETE as deleteProject,
 } from "@/app/api/projects/[id]/route";
 import { POST as uploadCsv } from "@/app/api/projects/[id]/traffic-data/route";
+import { POST as addRowRoute } from "@/app/api/projects/[id]/traffic-data/rows/route";
+import {
+  PATCH as patchRowRoute,
+  DELETE as deleteRowRoute,
+} from "@/app/api/projects/[id]/traffic-data/rows/[rowId]/route";
 import { POST as previewCsv } from "@/app/api/projects/[id]/traffic-data/preview/route";
 import { POST as generateReport } from "@/app/api/projects/[id]/generate-report/route";
 import { POST as previewReport } from "@/app/api/projects/[id]/generate-report/preview/route";
@@ -223,6 +228,129 @@ describe("POST /api/projects/:id/traffic-data", () => {
       params: { id: p.id },
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/projects/:id/traffic-data/rows", () => {
+  const validRow = {
+    intersection: "Main & 1st",
+    period: "AM",
+    approach: "N",
+    inbound: 1,
+    outbound: 2,
+    total: 3,
+  };
+
+  it("inserts a valid row and the CSV preview reflects it", async () => {
+    const p = await makeProject();
+    const res = await addRowRoute(jsonReq("POST", { row: validRow }), {
+      params: { id: p.id },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.id).toBeTruthy();
+    expect(body.projectId).toBe(p.id);
+    expect(body.intersection).toBe("Main & 1st");
+
+    const { trafficRepo } = await import("@/lib/db");
+    const list = trafficRepo.listByProject(p.id);
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe(body.id);
+  });
+
+  it("rejects an invalid row with 400 and populated issues", async () => {
+    const p = await makeProject();
+    const res = await addRowRoute(
+      jsonReq("POST", { row: { ...validRow, period: "RUSH", total: "abc" } }),
+      { params: { id: p.id } },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBeTruthy();
+    expect(Array.isArray(body.issues)).toBe(true);
+    expect(body.issues.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("returns 404 for a project owned by another user", async () => {
+    const p = await makeProject();
+    const userBId = seedUser("rows-other@example.com");
+    process.env.AUTH_TEST_USER_ID = userBId;
+    const res = await addRowRoute(jsonReq("POST", { row: validRow }), {
+      params: { id: p.id },
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("PATCH /api/projects/:id/traffic-data/rows/:rowId", () => {
+  const validRow = {
+    intersection: "Main & 1st",
+    period: "AM",
+    approach: "N",
+    inbound: 1,
+    outbound: 2,
+    total: 3,
+  };
+
+  it("updates a row (happy path), 404s cross-user, 404s row from a different project", async () => {
+    const p = await makeProject();
+    const add = await addRowRoute(jsonReq("POST", { row: validRow }), {
+      params: { id: p.id },
+    });
+    const created = await add.json();
+
+    // Happy path.
+    const ok = await patchRowRoute(jsonReq("PATCH", { inbound: 99 }), {
+      params: { id: p.id, rowId: created.id },
+    });
+    expect(ok.status).toBe(200);
+    const updated = await ok.json();
+    expect(updated.inbound).toBe(99);
+    expect(updated.outbound).toBe(2);
+
+    // Same user, different project: row not in that project → 404.
+    const otherProject = await makeProject();
+    const cross = await patchRowRoute(jsonReq("PATCH", { inbound: 1 }), {
+      params: { id: otherProject.id, rowId: created.id },
+    });
+    expect(cross.status).toBe(404);
+
+    // Cross-user: 404 from project guard.
+    const userBId = seedUser("patch-other@example.com");
+    process.env.AUTH_TEST_USER_ID = userBId;
+    const xuser = await patchRowRoute(jsonReq("PATCH", { inbound: 1 }), {
+      params: { id: p.id, rowId: created.id },
+    });
+    expect(xuser.status).toBe(404);
+  });
+});
+
+describe("DELETE /api/projects/:id/traffic-data/rows/:rowId", () => {
+  const validRow = {
+    intersection: "Main & 1st",
+    period: "AM",
+    approach: "N",
+    inbound: 1,
+    outbound: 2,
+    total: 3,
+  };
+
+  it("deletes a row (204) and returns 404 for unknown row", async () => {
+    const p = await makeProject();
+    const add = await addRowRoute(jsonReq("POST", { row: validRow }), {
+      params: { id: p.id },
+    });
+    const created = await add.json();
+
+    const ok = await deleteRowRoute(emptyReq("DELETE"), {
+      params: { id: p.id, rowId: created.id },
+    });
+    expect(ok.status).toBe(204);
+
+    const notFound = await deleteRowRoute(emptyReq("DELETE"), {
+      params: { id: p.id, rowId: "nope" },
+    });
+    expect(notFound.status).toBe(404);
   });
 });
 
