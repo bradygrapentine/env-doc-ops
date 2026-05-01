@@ -11,6 +11,7 @@ import {
   DELETE as deleteProject,
 } from "@/app/api/projects/[id]/route";
 import { POST as uploadCsv } from "@/app/api/projects/[id]/traffic-data/route";
+import { POST as previewCsv } from "@/app/api/projects/[id]/traffic-data/preview/route";
 import { POST as generateReport } from "@/app/api/projects/[id]/generate-report/route";
 import { POST as previewReport } from "@/app/api/projects/[id]/generate-report/preview/route";
 import { GET as getReport } from "@/app/api/reports/[id]/route";
@@ -198,6 +199,41 @@ describe("POST /api/projects/:id/traffic-data", () => {
       params: { id: p.id },
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /api/projects/:id/traffic-data/preview", () => {
+  const HEADER = "intersection,period,approach,inbound,outbound,total";
+
+  it("returns parsed result for a valid CSV", async () => {
+    const p = await makeProject();
+    const res = await previewCsv(textReq("POST", SAMPLE_CSV), { params: { id: p.id } });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.validRows).toHaveLength(8);
+    expect(body.invalidRows).toHaveLength(0);
+  });
+
+  it("returns 200 with invalidRows populated when a row is bad (no failure)", async () => {
+    const p = await makeProject();
+    const csv = [HEADER, "Main,AM,N,1,2,3", "Bad,RUSH,N,1,2,abc"].join("\n");
+    const res = await previewCsv(textReq("POST", csv), { params: { id: p.id } });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.validRows).toHaveLength(1);
+    expect(body.invalidRows).toHaveLength(1);
+    expect(body.invalidRows[0].issues.length).toBeGreaterThan(0);
+    expect(body.invalidRows[0].row).toBe(3);
+  });
+
+  it("returns 400 when a required column is missing", async () => {
+    const p = await makeProject();
+    const res = await previewCsv(textReq("POST", "intersection,period\nMain,AM"), {
+      params: { id: p.id },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/Missing required columns/i);
   });
 });
 

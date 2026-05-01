@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTrafficCsv } from "./csv";
+import { parseTrafficCsv, parseTrafficCsvDetailed } from "./csv";
 
 const HEADER = "intersection,period,approach,inbound,outbound,total";
 
@@ -81,5 +81,43 @@ describe("parseTrafficCsv", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.rows[0].approach).toBeUndefined();
+  });
+});
+
+describe("parseTrafficCsvDetailed", () => {
+  it("returns fatal when a required column is missing", () => {
+    const csv = "intersection,period,inbound,outbound\nMain,AM,1,2";
+    const r = parseTrafficCsvDetailed(csv);
+    expect(r.fatal).toBeTruthy();
+    expect(r.fatal).toMatch(/Missing required columns/i);
+    expect(r.validRows).toHaveLength(0);
+    expect(r.invalidRows).toHaveLength(0);
+  });
+
+  it("partitions a 4-row CSV into two valid + two invalid rows", () => {
+    const csv = [
+      HEADER,
+      "Main St & 1st,AM,N,1,2,3", // valid (row 2)
+      "Main St & 1st,RUSH,N,1,2,3", // invalid period (row 3)
+      "Main St & 1st,PM,N,4,5,9", // valid (row 4)
+      ",AM,N,1,2,3", // empty intersection (row 5)
+    ].join("\n");
+    const r = parseTrafficCsvDetailed(csv);
+    expect(r.fatal).toBeUndefined();
+    expect(r.validRows).toHaveLength(2);
+    expect(r.invalidRows).toHaveLength(2);
+    expect(r.invalidRows[0].row).toBe(3);
+    expect(r.invalidRows[1].row).toBe(5);
+    expect(r.totalRows).toBe(4);
+  });
+
+  it("collects multiple issues for a single row", () => {
+    const csv = `${HEADER}\nMain,RUSH,N,1,2,abc`;
+    const r = parseTrafficCsvDetailed(csv);
+    expect(r.invalidRows).toHaveLength(1);
+    const issues = r.invalidRows[0].issues;
+    expect(issues.length).toBeGreaterThanOrEqual(2);
+    expect(issues.some((i) => i.column === "period")).toBe(true);
+    expect(issues.some((i) => i.column === "total")).toBe(true);
   });
 });
