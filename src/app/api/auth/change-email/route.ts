@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { userRepo } from "@/lib/db";
 import { tokenRepo } from "@/lib/tokens";
-import { emailLinkBase, sendEmailChangeConfirmation } from "@/lib/email";
+import {
+  emailLinkBase,
+  sendEmailChangeConfirmation,
+  sendEmailChangeNotification,
+} from "@/lib/email";
 import { getSessionUserId } from "@/lib/session";
 import { clearPasswordRateLimit, gatePasswordEndpoint } from "@/lib/rate-limit-policy";
 
@@ -50,8 +54,18 @@ export async function POST(req: Request) {
   }
 
   const { token } = tokenRepo.createEmailChange(userId, newEmail);
-  const link = `${emailLinkBase(req)}/account/confirm-email-change?token=${token}`;
+  const base = emailLinkBase(req);
+  const link = `${base}/account/confirm-email-change?token=${token}`;
   await sendEmailChangeConfirmation(newEmail, link);
+
+  // Notify the CURRENT address so a compromised-account victim has a chance
+  // to react. Soft-fail: the primary confirmation email already went out, so
+  // a downstream send error must not surface as a 500 to the caller.
+  try {
+    await sendEmailChangeNotification(user.email, `${base}/account`);
+  } catch (err) {
+    console.warn("[change-email] notification to old address failed:", (err as Error).message);
+  }
 
   return NextResponse.json({ ok: true });
 }

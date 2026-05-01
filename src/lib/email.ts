@@ -83,3 +83,21 @@ export async function sendEmailChangeConfirmation(to: string, link: string): Pro
   const body = `An email change was requested for your EnvDocOS Traffic account.\n\nConfirm this is your new email by clicking the link below:\n\n${link}\n\nThis link expires in 1 hour. If you did not request this, you can ignore this email.\n`;
   await send(to, subject, body, link);
 }
+
+/**
+ * Notify the CURRENT (old) email address that someone requested an email
+ * change on this account. The link points at /account so the user can review
+ * and, if it wasn't them, change their password to lock the attacker out.
+ *
+ * Security note: this email MUST NOT contain the new email address in
+ * plaintext. If the old account is already compromised, leaking the new
+ * destination tells the attacker where the legitimate user is moving.
+ */
+export async function sendEmailChangeNotification(
+  currentEmail: string,
+  accountLink: string,
+): Promise<void> {
+  const subject = "Security alert: email change requested on your EnvDocOS Traffic account";
+  const body = `We received a request to change the email address on your EnvDocOS Traffic account.\n\nIf this was you, no action is needed — finish the change from the confirmation link sent to your new address.\n\nIf this wasn't you, your account may be compromised. Secure it now by changing your password:\n\n${accountLink}\n`;
+  await send(currentEmail, subject, body, accountLink);
+}
