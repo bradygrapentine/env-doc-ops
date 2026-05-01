@@ -319,7 +319,7 @@ export const reportRepo = {
   updateSection(
     reportId: string,
     sectionId: string,
-    patch: Partial<Pick<ReportSection, "content" | "status" | "title">>,
+    patch: Partial<Pick<ReportSection, "content" | "status" | "title" | "machineBaseline">>,
   ): Report | undefined {
     const conn = db();
     const fields: string[] = [];
@@ -335,6 +335,10 @@ export const reportRepo = {
     if (patch.title !== undefined) {
       fields.push("title = ?");
       values.push(patch.title);
+    }
+    if (patch.machineBaseline !== undefined) {
+      fields.push("machineBaseline = ?");
+      values.push(patch.machineBaseline);
     }
     if (fields.length === 0) return reportRepo.get(reportId);
     conn
