@@ -2083,3 +2083,55 @@ describe("Rate limit: signup / forgot-password / signin", () => {
     expect(isUnauthenticatedBlocked(email, "signin", SIGNIN_BUCKET)).toBe(true);
   });
 });
+
+describe("CSV upload caps (B-057)", () => {
+  it("rejects body > 1 MiB with 413 (declared via content-length)", async () => {
+    const project = await makeProject();
+    // Don't actually allocate >1MiB; rely on a spoofed content-length header.
+    const tinyBody = "intersection,period,approach,inbound,outbound,total\n";
+    const req = new Request("http://test.local", {
+      method: "POST",
+      headers: { "content-type": "text/csv", "content-length": String(2 * 1024 * 1024) },
+      body: tinyBody,
+    });
+    const res = await uploadCsv(req, { params: { id: project.id } });
+    expect(res.status).toBe(413);
+  });
+
+  it("rejects body > 1 MiB with 413 (actual oversized payload, no content-length)", async () => {
+    const project = await makeProject();
+    const header = "intersection,period,approach,inbound,outbound,total\n";
+    const oneRow = "Main St & 1st Ave,AM,N,1,1,2\n";
+    // ~1.05 MiB of repeated rows.
+    const big = header + oneRow.repeat(Math.ceil((1.05 * 1024 * 1024) / oneRow.length));
+    const res = await uploadCsv(textReq("POST", big), { params: { id: project.id } });
+    expect(res.status).toBe(413);
+  });
+
+  it("rejects > 5000 rows with 422 even when body is under 1 MiB", async () => {
+    const project = await makeProject();
+    const header = "intersection,period,approach,inbound,outbound,total\n";
+    // 5001 rows of compact valid data, well under 1 MiB.
+    const oneRow = "I,AM,N,1,1,2\n";
+    const body = header + oneRow.repeat(5001);
+    const res = await uploadCsv(textReq("POST", body), { params: { id: project.id } });
+    expect(res.status).toBe(422);
+  });
+
+  it("preview route also enforces both caps", async () => {
+    const project = await makeProject();
+    const header = "intersection,period,approach,inbound,outbound,total\n";
+    const oneRow = "I,AM,N,1,1,2\n";
+    const body = header + oneRow.repeat(5001);
+    const res = await previewCsv(textReq("POST", body), { params: { id: project.id } });
+    expect(res.status).toBe(422);
+  });
+
+  it("happy path under both caps still succeeds", async () => {
+    const project = await makeProject();
+    const header = "intersection,period,approach,inbound,outbound,total\n";
+    const body = header + "Main St & 1st Ave,AM,N,1,1,2\n";
+    const res = await uploadCsv(textReq("POST", body), { params: { id: project.id } });
+    expect(res.status).toBe(200);
+  });
+});

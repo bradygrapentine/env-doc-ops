@@ -117,6 +117,35 @@ export function validateRow(
   };
 }
 
+export const CSV_BODY_MAX_BYTES = 1024 * 1024; // 1 MiB
+export const CSV_ROW_MAX = 5000;
+
+export type CsvCapRejection = { tooLarge?: true; tooManyRows?: { count: number } };
+
+/**
+ * Pre-parse caps for CSV upload routes. Checks content-length when present
+ * (cheap early reject) and falls back to body-length post-read (defense in
+ * depth — content-length is client-supplied and may be spoofed/missing).
+ *
+ * Returns a rejection object describing why; null when OK to proceed.
+ */
+export function checkCsvBodyCap(
+  contentLengthHeader: string | null,
+  bodyText: string,
+): CsvCapRejection | null {
+  if (contentLengthHeader) {
+    const declared = Number(contentLengthHeader);
+    if (Number.isFinite(declared) && declared > CSV_BODY_MAX_BYTES) {
+      return { tooLarge: true };
+    }
+  }
+  // Byte length, not character length — UTF-8 multibyte chars matter.
+  if (Buffer.byteLength(bodyText, "utf8") > CSV_BODY_MAX_BYTES) {
+    return { tooLarge: true };
+  }
+  return null;
+}
+
 export function parseTrafficCsvDetailed(text: string): DetailedParseResult {
   const result = Papa.parse<Record<string, string>>(text.trim(), {
     header: true,
