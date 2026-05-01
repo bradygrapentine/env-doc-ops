@@ -43,7 +43,8 @@ export function generateReportSections(project: Project, rows: TrafficCountRow[]
   const mi = project.manualInputs;
   const tripGenOverride = mi?.tripGenAssumptions?.trim();
   const conclusionOverride = mi?.engineerConclusions?.trim();
-  // TODO B-032 followup: wire growthRate into impact-analysis and mitigationNotes into mitigation.
+  const growthRate = mi?.growthRate?.trim();
+  const mitigationNotes = mi?.mitigationNotes?.trim();
 
   const draft = (id: string, title: string, order: number, content: string): ReportSection => ({
     id,
@@ -61,6 +62,16 @@ export function generateReportSections(project: Project, rows: TrafficCountRow[]
   const conclusionContent = conclusionOverride
     ? mi!.engineerConclusions!
     : `This report provides a preliminary evaluation of traffic conditions associated with the proposed project. The findings are intended to support engineering review and should be supplemented by professional judgment, jurisdictional requirements, and any required traffic modeling.`;
+
+  const impactBase = `Based on the available count data and preliminary project information, the proposed project may affect operations at selected study intersections. Intersections with higher existing volumes or larger projected increases should be reviewed further by the project traffic engineer.`;
+  const impactContent = growthRate
+    ? `${impactBase} A background traffic growth rate of ${growthRate} was assumed for the analysis horizon, applied to existing volumes prior to overlaying project-generated trips.`
+    : impactBase;
+
+  const mitigationBase = `Potential mitigation measures may include signal timing review, access management adjustments, turn lane evaluation, pedestrian improvements, or additional operational analysis. Final mitigation recommendations should be confirmed by the responsible traffic engineer.`;
+  const mitigationContent = mitigationNotes
+    ? `${mitigationBase}\n\nEngineer notes: ${mitigationNotes}`
+    : mitigationBase;
 
   return [
     draft(
@@ -88,18 +99,8 @@ export function generateReportSections(project: Project, rows: TrafficCountRow[]
       `Traffic count data were reviewed for the study intersections during the AM and PM peak periods. The highest observed AM total volume was recorded at ${m.highestAmIntersection ?? "N/A"} with ${m.highestAmTotal ?? 0} total vehicles. The highest observed PM total volume was recorded at ${m.highestPmIntersection ?? "N/A"} with ${m.highestPmTotal ?? 0} total vehicles.`,
     ),
     draft("trip-generation", "Trip Generation", 5, tripGenContent),
-    draft(
-      "impact-analysis",
-      "Impact Analysis",
-      6,
-      `Based on the available count data and preliminary project information, the proposed project may affect operations at selected study intersections. Intersections with higher existing volumes or larger projected increases should be reviewed further by the project traffic engineer.`,
-    ),
-    draft(
-      "mitigation",
-      "Mitigation / Recommendations",
-      7,
-      `Potential mitigation measures may include signal timing review, access management adjustments, turn lane evaluation, pedestrian improvements, or additional operational analysis. Final mitigation recommendations should be confirmed by the responsible traffic engineer.`,
-    ),
+    draft("impact-analysis", "Impact Analysis", 6, impactContent),
+    draft("mitigation", "Mitigation / Recommendations", 7, mitigationContent),
     draft("conclusion", "Conclusion", 8, conclusionContent),
   ];
 }
