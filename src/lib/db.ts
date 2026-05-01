@@ -20,7 +20,22 @@ const SCHEMA_SQL = `
     email TEXT NOT NULL UNIQUE,
     passwordHash TEXT NOT NULL,
     name TEXT NOT NULL,
-    createdAt TEXT NOT NULL
+    createdAt TEXT NOT NULL,
+    emailVerifiedAt TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS verification_tokens (
+    token TEXT PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expiresAt TEXT NOT NULL,
+    usedAt TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    token TEXT PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expiresAt TEXT NOT NULL,
+    usedAt TEXT
   );
 
   CREATE TABLE IF NOT EXISTS projects (
@@ -101,6 +116,13 @@ function migrate(conn: Database.Database) {
     if (!/duplicate column name/i.test(msg)) throw e;
   }
   conn.exec(`UPDATE report_sections SET kind = 'standard' WHERE kind IS NULL OR kind = ''`);
+
+  try {
+    conn.exec(`ALTER TABLE users ADD COLUMN emailVerifiedAt TEXT`);
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (!/duplicate column name/i.test(msg)) throw e;
+  }
 }
 
 type ProjectRow = Omit<Project, "manualInputs"> & { manualInputs: string | null };
@@ -494,7 +516,7 @@ export const userRepo = {
   },
   findById(id: string): User | undefined {
     const row = db()
-      .prepare("SELECT id, email, name, createdAt FROM users WHERE id = ?")
+      .prepare("SELECT id, email, name, createdAt, emailVerifiedAt FROM users WHERE id = ?")
       .get(id) as User | undefined;
     return row;
   },
@@ -526,6 +548,16 @@ export const userRepo = {
       .run(passwordHash, userId);
     return info.changes > 0;
   },
+  markEmailVerified(userId: string): boolean {
+    const info = db()
+      .prepare("UPDATE users SET emailVerifiedAt = ? WHERE id = ?")
+      .run(now(), userId);
+    return info.changes > 0;
+  },
 };
+
+export function _dbInternal(): Database.Database {
+  return db();
+}
 
 export type { Period };

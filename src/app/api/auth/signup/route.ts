@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { userRepo } from "@/lib/db";
+import { tokenRepo } from "@/lib/tokens";
+import { sendVerificationEmail } from "@/lib/email";
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -33,6 +35,16 @@ export async function POST(req: Request) {
   let claimed = 0;
   if (isFirstUser) {
     claimed = userRepo.claimOrphanProjects(user.id);
+  }
+
+  // Kick off verification email — failure must not block signup.
+  try {
+    const { token } = tokenRepo.createVerification(user.id);
+    const origin = new URL(req.url).origin;
+    const link = `${origin}/api/auth/verify-email?token=${token}`;
+    await sendVerificationEmail(user.email, link);
+  } catch (err) {
+    console.warn("[signup] failed to send verification email:", (err as Error).message);
   }
 
   return NextResponse.json({ id: user.id, email: user.email, name: user.name, claimed });

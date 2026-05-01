@@ -29,6 +29,18 @@ Then open http://localhost:3000. You'll be redirected to `/signup` to create the
 - `papaparse` for CSV parsing
 - `docx` for Word export
 
+## Environment variables
+
+See `.env.example`. Quick reference:
+
+- `AUTH_SECRET` — required. Used by Auth.js v5.
+- `ENVDOCOS_DB_PATH` — optional SQLite path (defaults to `./data/envdocos.db`).
+- `RESEND_API_KEY`, `EMAIL_FROM` — required to actually send verification + password-reset
+  emails in production. In dev they can be left blank: the email wrapper logs a warning
+  and silently no-ops, so signup and forgot-password keep working.
+- `EMAIL_SINK=memory` — capture emails in an in-memory array (used by tests + E2E).
+  Tests force this on via `NODE_ENV=test`.
+
 ## CSV format
 
 Required columns: `intersection,period,approach,inbound,outbound,total`. `period` must be one of `AM`, `PM`, `MIDDAY`, `OTHER`. `approach` is optional. `inbound`, `outbound`, `total` must be numbers.

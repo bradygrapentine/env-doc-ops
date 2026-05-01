@@ -51,6 +51,9 @@ export default function SignInPage() {
             required
             className="w-full rounded border px-3 py-2 text-sm"
           />
+          <Link href="/forgot-password" className="block text-xs text-gray-500 underline mt-1">
+            Forgot password?
+          </Link>
         </label>
         {error && <div className="text-sm text-red-600">{error}</div>}
         <button

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import bcrypt from "bcryptjs";
 import { resetDb } from "./db";
-import { jsonReq, textReq, emptyReq } from "./routes";
+import { jsonReq, textReq, emptyReq, nextJsonReq, nextEmptyReq } from "./routes";
 import { userRepo } from "@/lib/db";
 
 import { POST as createProject, GET as listProjects } from "@/app/api/projects/route";
@@ -33,6 +33,12 @@ import { POST as exportDocx } from "@/app/api/reports/[id]/export-docx/route";
 import { POST as exportPdf } from "@/app/api/reports/[id]/export-pdf/route";
 import { POST as signupRoute } from "@/app/api/auth/signup/route";
 import { POST as changePasswordRoute } from "@/app/api/auth/change-password/route";
+import { POST as forgotPasswordRoute } from "@/app/api/auth/forgot-password/route";
+import { POST as resetPasswordRoute } from "@/app/api/auth/reset-password/route";
+import { POST as sendVerificationRoute } from "@/app/api/auth/send-verification/route";
+import { GET as verifyEmailRoute } from "@/app/api/auth/verify-email/route";
+import { tokenRepo } from "@/lib/tokens";
+import { getCapturedEmails, clearCapturedEmails } from "@/lib/email";
 
 const SAMPLE_CSV = fs.readFileSync(
   path.join(process.cwd(), "sample_data/sample_traffic_counts.csv"),
@@ -76,6 +82,7 @@ function seedUser(email = "test@example.com"): string {
 
 beforeEach(() => {
   resetDb();
+  clearCapturedEmails();
   process.env.AUTH_TEST_USER_ID = seedUser();
 });
 
@@ -915,5 +922,110 @@ describe("Cross-user isolation", () => {
     process.env.AUTH_TEST_USER_ID = userBId;
     const del = await deleteProject(emptyReq("DELETE"), { params: { id: projectA.id } });
     expect(del.status).toBe(404);
+  });
+});
+
+describe("Password reset + email verification", () => {
+  function emailFromUserId(userId: string): string {
+    return userRepo.findById(userId)!.email;
+  }
+
+  it("forgot-password for an existing user returns 200 and sends one email", async () => {
+    const email = emailFromUserId(process.env.AUTH_TEST_USER_ID!);
+    const res = await forgotPasswordRoute(nextJsonReq("POST", { email }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true });
+    const emails = getCapturedEmails();
+    expect(emails).toHaveLength(1);
+    expect(emails[0].to).toBe(email);
+    expect(emails[0].body).toContain("/reset-password?token=");
+  });
+
+  it("forgot-password for a non-existent email returns 200 and sends zero emails", async () => {
+    const res = await forgotPasswordRoute(nextJsonReq("POST", { email: "nobody@example.com" }));
+    expect(res.status).toBe(200);
+    expect(getCapturedEmails()).toHaveLength(0);
+  });
+
+  it("reset-password with a valid token rotates the password", async () => {
+    const userId = process.env.AUTH_TEST_USER_ID!;
+    const email = emailFromUserId(userId);
+    const { token } = tokenRepo.createReset(userId);
+    const res = await resetPasswordRoute(jsonReq("POST", { token, newPassword: "brand-new-pw-9" }));
+    expect(res.status).toBe(200);
+    const updated = userRepo.findByEmail(email)!;
+    expect(await bcrypt.compare("brand-new-pw-9", updated.passwordHash)).toBe(true);
+  });
+
+  it("reset-password with newPassword shorter than 8 returns 400", async () => {
+    const userId = process.env.AUTH_TEST_USER_ID!;
+    const { token } = tokenRepo.createReset(userId);
+    const res = await resetPasswordRoute(jsonReq("POST", { token, newPassword: "short" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("reset-password with a used token returns 400", async () => {
+    const userId = process.env.AUTH_TEST_USER_ID!;
+    const { token } = tokenRepo.createReset(userId);
+    await resetPasswordRoute(jsonReq("POST", { token, newPassword: "valid-password-1" }));
+    const second = await resetPasswordRoute(
+      jsonReq("POST", { token, newPassword: "another-pw-2" }),
+    );
+    expect(second.status).toBe(400);
+  });
+
+  it("send-verification with no session returns 401", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await sendVerificationRoute(nextEmptyReq("POST"));
+    expect(res.status).toBe(401);
+  });
+
+  it("send-verification with session sends one email", async () => {
+    const res = await sendVerificationRoute(nextEmptyReq("POST"));
+    expect(res.status).toBe(200);
+    const emails = getCapturedEmails();
+    expect(emails).toHaveLength(1);
+    expect(emails[0].body).toContain("/api/auth/verify-email?token=");
+  });
+
+  it("verify-email redirects to /account?verified=1 and sets emailVerifiedAt", async () => {
+    const userId = process.env.AUTH_TEST_USER_ID!;
+    const { token } = tokenRepo.createVerification(userId);
+    const res = await verifyEmailRoute(
+      nextEmptyReq("GET", `http://test.local/api/auth/verify-email?token=${token}`),
+    );
+    expect(res.status).toBe(307);
+    const loc = res.headers.get("location") ?? "";
+    expect(loc).toContain("/account");
+    expect(loc).toContain("verified=1");
+    const user = userRepo.findById(userId);
+    expect(user?.emailVerifiedAt).toBeTruthy();
+  });
+
+  it("verify-email with an invalid token redirects to /account?verified=error", async () => {
+    const res = await verifyEmailRoute(
+      nextEmptyReq("GET", "http://test.local/api/auth/verify-email?token=garbage"),
+    );
+    expect(res.status).toBe(307);
+    const loc = res.headers.get("location") ?? "";
+    expect(loc).toContain("verified=error");
+  });
+
+  it("signup pushes one verification email to the sink", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    clearCapturedEmails();
+    const res = await signupRoute(
+      jsonReq("POST", {
+        email: "newby@example.com",
+        password: "password123",
+        name: "Newby",
+      }),
+    );
+    expect(res.status).toBe(200);
+    const emails = getCapturedEmails();
+    expect(emails).toHaveLength(1);
+    expect(emails[0].to).toBe("newby@example.com");
+    expect(emails[0].subject).toBe("Verify your EnvDocOS Traffic account");
   });
 });

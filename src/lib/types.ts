@@ -3,6 +3,7 @@ export type User = {
   email: string;
   name: string;
   createdAt: string;
+  emailVerifiedAt?: string | null;
 };
 
 export type ManualInputs = {
