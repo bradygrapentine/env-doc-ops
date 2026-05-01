@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSessionUserId } from "@/lib/session";
 import { userRepo } from "@/lib/db";
 import ChangePasswordForm from "./ChangePasswordForm";
+import EmailVerificationStatus from "./EmailVerificationStatus";
 
 export default async function AccountPage() {
   const userId = await getSessionUserId();
@@ -16,6 +17,8 @@ export default async function AccountPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <h1 className="text-2xl font-semibold">Account</h1>
+
+      <EmailVerificationStatus verified={!!user.emailVerifiedAt} />
 
       <section className="bg-white border rounded p-6">
         <h2 className="text-lg font-semibold mb-4">Profile</h2>

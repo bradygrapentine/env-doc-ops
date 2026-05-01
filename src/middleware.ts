@@ -4,7 +4,7 @@ import authConfig from "@/auth.config";
 
 const { auth } = NextAuth(authConfig);
 
-const PUBLIC_PATHS = new Set(["/signin", "/signup"]);
+const PUBLIC_PATHS = new Set(["/signin", "/signup", "/forgot-password", "/reset-password"]);
 const PUBLIC_API_PREFIXES = ["/api/auth"];
 
 export default auth((req) => {
