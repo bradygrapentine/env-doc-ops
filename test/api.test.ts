@@ -16,6 +16,7 @@ import { POST as previewReport } from "@/app/api/projects/[id]/generate-report/p
 import { GET as getReport } from "@/app/api/reports/[id]/route";
 import { PATCH as patchSection } from "@/app/api/reports/[id]/sections/[sectionId]/route";
 import { POST as exportDocx } from "@/app/api/reports/[id]/export-docx/route";
+import { POST as exportPdf } from "@/app/api/reports/[id]/export-pdf/route";
 
 const SAMPLE_CSV = fs.readFileSync(
   path.join(process.cwd(), "sample_data/sample_traffic_counts.csv"),
@@ -294,6 +295,26 @@ describe("POST /api/reports/:id/export-docx", () => {
 
   it("returns 404 for unknown report", async () => {
     const res = await exportDocx(emptyReq("POST"), { params: { id: "nope" } });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/reports/:id/export-pdf", () => {
+  it("returns a pdf attachment", async () => {
+    const { reportId } = await makeReport();
+    const res = await exportPdf(emptyReq("POST"), { params: { id: reportId } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/pdf");
+    const ab = await res.arrayBuffer();
+    const u8 = new Uint8Array(ab);
+    expect(u8[0]).toBe(0x25);
+    expect(u8[1]).toBe(0x50);
+    expect(u8[2]).toBe(0x44);
+    expect(u8[3]).toBe(0x46);
+  });
+
+  it("returns 404 for unknown report", async () => {
+    const res = await exportPdf(emptyReq("POST"), { params: { id: "nope" } });
     expect(res.status).toBe(404);
   });
 });

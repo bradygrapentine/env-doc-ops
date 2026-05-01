@@ -17,6 +17,7 @@ export default function ReportEditor({
   const [activeId, setActiveId] = useState<string>(report.sections[0]?.id ?? "");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const searchParams = useSearchParams();
   const titleById = useMemo(
@@ -62,6 +63,26 @@ export default function ReportEditor({
     a.remove();
     URL.revokeObjectURL(url);
     setExporting(false);
+  }
+
+  async function exportPdf() {
+    setExportingPdf(true);
+    const res = await fetch(`/api/reports/${report.id}/export-pdf`, { method: "POST" });
+    if (!res.ok) {
+      setExportingPdf(false);
+      alert("Export failed");
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `report-${report.id}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setExportingPdf(false);
   }
 
   const warnings: string[] = [];
@@ -125,6 +146,13 @@ export default function ReportEditor({
             className="mt-4 w-full rounded bg-black text-white px-3 py-2 text-sm disabled:opacity-50 hover:bg-gray-800"
           >
             {exporting ? "Exporting…" : "Export DOCX"}
+          </button>
+          <button
+            onClick={exportPdf}
+            disabled={exportingPdf}
+            className="mt-2 w-full rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50 hover:bg-gray-50"
+          >
+            {exportingPdf ? "Exporting…" : "Export PDF"}
           </button>
         </aside>
 
