@@ -57,13 +57,6 @@ export default defineConfig({
         // (would require live API). Excluded per Phase 2 plan §Step 4.
         "src/lib/email.ts",
         "src/lib/types.ts",
-        // ReportEditor (525 lines) and UploadCsv (354 lines) carry their own
-        // sub-task in the next phase; rich interaction coverage requires
-        // significant test scaffolding. Excluded with a comment so the gate
-        // still tracks the rest of the UI. Followup: separate "burn-down"
-        // dispatch dedicated to these two files.
-        "src/app/reports/[id]/ReportEditor.tsx",
-        "src/app/projects/[id]/UploadCsv.tsx",
         "**/*.d.ts",
         "**/*.test.{ts,tsx}",
       ],

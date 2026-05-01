@@ -27,9 +27,9 @@ _Empty — V1 backlog is fully shipped._
 
 Followups noted during execution (low priority polish):
 
-- **B-???-test-debt** — `ReportEditor.tsx` and `UploadCsv.tsx` are excluded from coverage. They have rich interaction surface that needs dedicated test scaffolding. Pick up when these components next change.
-- **B-???-cpf-bug** — Phase 2 surfaced a `e.currentTarget` post-await null in `ChangePasswordForm.tsx`. Benign in practice (handled by an unhandledRejection swallow in tests) but should be cleaned up.
-- **B-???-edit-form** — `src/app/projects/[id]/edit/page.tsx` could be split into `EditProjectForm.tsx` for testability. Deferred during Phase 2.
+- ~~**B-???-test-debt** — `ReportEditor.tsx` and `UploadCsv.tsx` are excluded from coverage.~~ Shipped: 12 ReportEditor + 8 UploadCsv tests; both removed from coverage exclusion list.
+- ~~**B-???-cpf-bug** — `e.currentTarget` post-await null in `ChangePasswordForm.tsx`.~~ Fixed: form ref captured synchronously; test-side `unhandledRejection` swallow removed.
+- ~~**B-???-edit-form** — `edit/page.tsx` could be split into `EditProjectForm.tsx`.~~ Shipped: extracted with 4 tests.
 - **Email change** — different from email-verification-on-signup; no flow yet.
 - **Read+write sharing role** — V1 sharing is read-only; read+write needs a conflict-resolution story.
 - **Account deletion** — no flow yet.
