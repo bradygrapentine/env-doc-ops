@@ -65,6 +65,7 @@ const SCHEMA_SQL = `
     content TEXT NOT NULL,
     status TEXT NOT NULL,
     machineBaseline TEXT,
+    kind TEXT NOT NULL DEFAULT 'standard',
     PRIMARY KEY (reportId, id)
   );
 `;
@@ -92,6 +93,14 @@ function migrate(conn: Database.Database) {
     if (!/duplicate column name/i.test(msg)) throw e;
   }
   conn.exec(`CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(userId)`);
+
+  try {
+    conn.exec(`ALTER TABLE report_sections ADD COLUMN kind TEXT NOT NULL DEFAULT 'standard'`);
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (!/duplicate column name/i.test(msg)) throw e;
+  }
+  conn.exec(`UPDATE report_sections SET kind = 'standard' WHERE kind IS NULL OR kind = ''`);
 }
 
 type ProjectRow = Omit<Project, "manualInputs"> & { manualInputs: string | null };
@@ -278,7 +287,7 @@ export const reportRepo = {
     if (!row) return undefined;
     const sections = conn
       .prepare(
-        `SELECT id, title, "order", content, status, machineBaseline FROM report_sections WHERE reportId = ? ORDER BY "order"`,
+        `SELECT id, title, "order", content, status, machineBaseline, kind FROM report_sections WHERE reportId = ? ORDER BY "order"`,
       )
       .all(id) as ReportSection[];
     return { ...row, sections };
@@ -308,10 +317,10 @@ export const reportRepo = {
           .run(reportId, projectId, ts, ts);
       }
       const insertSection = conn.prepare(`
-        INSERT INTO report_sections (id, reportId, title, "order", content, status, machineBaseline)
-        VALUES (@id, @reportId, @title, @order, @content, @status, @machineBaseline)
+        INSERT INTO report_sections (id, reportId, title, "order", content, status, machineBaseline, kind)
+        VALUES (@id, @reportId, @title, @order, @content, @status, @machineBaseline, @kind)
       `);
-      for (const s of sections) insertSection.run({ ...s, reportId });
+      for (const s of sections) insertSection.run({ ...s, reportId, kind: s.kind ?? "standard" });
     });
     tx();
     return reportRepo.get(reportId)!;
@@ -346,6 +355,75 @@ export const reportRepo = {
       .run(...values, reportId, sectionId);
     conn.prepare("UPDATE reports SET updatedAt = ? WHERE id = ?").run(now(), reportId);
     return reportRepo.get(reportId);
+  },
+  reorderSections(reportId: string, orderedIds: string[]): boolean {
+    const conn = db();
+    const tx = conn.transaction(() => {
+      const existing = conn
+        .prepare(`SELECT id FROM report_sections WHERE reportId = ?`)
+        .all(reportId) as { id: string }[];
+      const existingIds = existing.map((r) => r.id).sort();
+      const requested = [...orderedIds].sort();
+      if (
+        existingIds.length !== requested.length ||
+        new Set(orderedIds).size !== orderedIds.length ||
+        existingIds.some((id, i) => id !== requested[i])
+      ) {
+        return false;
+      }
+      const upd = conn.prepare(
+        `UPDATE report_sections SET "order" = ? WHERE reportId = ? AND id = ?`,
+      );
+      orderedIds.forEach((id, idx) => upd.run(idx + 1, reportId, id));
+      conn.prepare("UPDATE reports SET updatedAt = ? WHERE id = ?").run(now(), reportId);
+      return true;
+    });
+    return tx() as boolean;
+  },
+  addCustomSection(
+    reportId: string,
+    input: { title: string; content: string },
+  ): ReportSection | undefined {
+    const conn = db();
+    const exists = conn.prepare("SELECT id FROM reports WHERE id = ?").get(reportId);
+    if (!exists) return undefined;
+    const row = conn
+      .prepare(`SELECT MAX("order") AS m FROM report_sections WHERE reportId = ?`)
+      .get(reportId) as { m: number | null };
+    const nextOrder = (row?.m ?? 0) + 1;
+    const section: ReportSection = {
+      id: uid(),
+      title: input.title,
+      order: nextOrder,
+      content: input.content,
+      status: "draft",
+      machineBaseline: input.content,
+      kind: "custom",
+    };
+    conn
+      .prepare(
+        `INSERT INTO report_sections (id, reportId, title, "order", content, status, machineBaseline, kind)
+         VALUES (@id, @reportId, @title, @order, @content, @status, @machineBaseline, @kind)`,
+      )
+      .run({ ...section, reportId });
+    conn.prepare("UPDATE reports SET updatedAt = ? WHERE id = ?").run(now(), reportId);
+    return section;
+  },
+  removeSection(
+    reportId: string,
+    sectionId: string,
+  ): { ok: true } | { ok: false; reason: "not_found" | "standard" } {
+    const conn = db();
+    const row = conn
+      .prepare(`SELECT kind FROM report_sections WHERE reportId = ? AND id = ?`)
+      .get(reportId, sectionId) as { kind: string } | undefined;
+    if (!row) return { ok: false, reason: "not_found" };
+    if (row.kind === "standard") return { ok: false, reason: "standard" };
+    conn
+      .prepare(`DELETE FROM report_sections WHERE reportId = ? AND id = ?`)
+      .run(reportId, sectionId);
+    conn.prepare("UPDATE reports SET updatedAt = ? WHERE id = ?").run(now(), reportId);
+    return { ok: true };
   },
 };
 

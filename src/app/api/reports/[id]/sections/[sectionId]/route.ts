@@ -32,3 +32,17 @@ export async function PATCH(
   if (!updated) return NextResponse.json({ error: "Report not found" }, { status: 404 });
   return NextResponse.json(updated);
 }
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: { id: string; sectionId: string } },
+) {
+  const guard = await requireOwnedReport(params.id);
+  if (!guard.ok) return guard.error;
+
+  const result = reportRepo.removeSection(params.id, params.sectionId);
+  if (result.ok) return new NextResponse(null, { status: 204 });
+  if (result.reason === "standard")
+    return NextResponse.json({ error: "Cannot delete a standard section" }, { status: 400 });
+  return NextResponse.json({ error: "Section not found" }, { status: 404 });
+}
