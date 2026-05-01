@@ -96,6 +96,30 @@ The full V1 product spec is in `envdocos_traffic_v1_package_full/docs/`:
 - `npm test` — Vitest (31 unit + route tests)
 - `npm run test:watch` — Vitest watch mode
 - `npm run test:coverage` — Vitest with V8 coverage
+- `npm run e2e` — Playwright E2E suite (see below)
+- `npm run e2e:ui` — Playwright in headed UI mode
+
+## End-to-end tests
+
+The Playwright suite lives in `e2e/` and exercises 11 user flows (signup,
+project lifecycle, DOCX/PDF export, edit/delete, search/sort,
+regenerate-preserves-edits, section regenerate, cross-user isolation,
+sharing, change password, forgot password).
+
+Quick start:
+
+```bash
+npm run build                  # required: webServer runs `next start`
+AUTH_SECRET=e2e-secret npm run e2e
+```
+
+Notes:
+
+- The webServer launches on port 3460 with `EMAIL_SINK=memory` and a
+  per-run sqlite db at `/tmp/e2e-<pid>-<ts>.db`, so tests don't collide
+  with your dev server.
+- The forgot-password test fetches `/api/test-only/emails`. That endpoint is
+  test-only and returns 404 unless `EMAIL_SINK=memory`.
 
 ## V1 limits
 

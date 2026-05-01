@@ -14,3 +14,5 @@ tsconfig.tsbuildinfo
 .memsearch/
 .claude/
 coverage/
+playwright-report/
+test-results/

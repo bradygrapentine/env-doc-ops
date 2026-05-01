@@ -11,6 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run lint && npm run typecheck && npm run format:check && npm run test:coverage"
@@ -30,6 +32,7 @@
     "resend": "^6.12.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
