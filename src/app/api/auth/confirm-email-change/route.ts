@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { userRepo, _dbInternal } from "@/lib/db";
+import { userRepo } from "@/lib/db";
 import { tokenRepo } from "@/lib/tokens";
 
 // GET is a non-consuming peek — it returns the new email for a valid token so
@@ -13,20 +13,11 @@ export async function GET(req: Request) {
   if (!token) {
     return NextResponse.json({ error: "missing" }, { status: 404 });
   }
-  const conn = _dbInternal();
-  const row = conn.prepare("SELECT * FROM email_change_tokens WHERE token = ?").get(token) as
-    | { token: string; userId: string; newEmail: string; expiresAt: string; usedAt: string | null }
-    | undefined;
-  if (!row) {
-    return NextResponse.json({ error: "invalid" }, { status: 404 });
+  const peeked = tokenRepo.peekEmailChange(token);
+  if ("error" in peeked) {
+    return NextResponse.json({ error: peeked.error }, { status: 404 });
   }
-  if (row.usedAt) {
-    return NextResponse.json({ error: "used" }, { status: 404 });
-  }
-  if (Date.parse(row.expiresAt) < Date.now()) {
-    return NextResponse.json({ error: "expired" }, { status: 404 });
-  }
-  return NextResponse.json({ newEmail: row.newEmail });
+  return NextResponse.json({ newEmail: peeked.newEmail });
 }
 
 // POST is the consuming step: only fired when the user clicks Confirm on the

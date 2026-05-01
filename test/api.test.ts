@@ -1833,4 +1833,49 @@ describe("Audit log GDPR scrub on user delete", () => {
       expect(r.details ?? "").not.toContain(ownerId);
     }
   });
+
+  it("preserves audit_log.createdAt across scrubUser", async () => {
+    const project = await makeProject();
+    const shareeId = seedUser("preserve-createdAt@example.com");
+    await addShare(jsonReq("POST", { email: "preserve-createdAt@example.com" }), {
+      params: { id: project.id },
+    });
+    const { _dbInternal, auditRepo } = await import("@/lib/db");
+    const before = _dbInternal()
+      .prepare("SELECT id, createdAt FROM audit_log WHERE action = 'share.add'")
+      .get() as { id: string; createdAt: string };
+    auditRepo.scrubUser(shareeId);
+    const after = _dbInternal()
+      .prepare("SELECT id, createdAt FROM audit_log WHERE id = ?")
+      .get(before.id) as { id: string; createdAt: string };
+    expect(after.createdAt).toBe(before.createdAt);
+  });
+
+  it("ignores non-JSON details (no over-broad substring scrub)", async () => {
+    // Synthesize a non-JSON details row that happens to contain the userId as
+    // a substring of unrelated text. scrubUser must NOT touch it: details is
+    // contractually JSON in the codebase, and the LIKE-substring fallback is
+    // a footgun if a UUID ever appears inside unrelated free text.
+    const project = await makeProject();
+    const shareeId = seedUser("non-json@example.com");
+    const { _dbInternal, auditRepo } = await import("@/lib/db");
+    const conn = _dbInternal();
+    const rowId = "non-json-row";
+    conn
+      .prepare(
+        "INSERT INTO audit_log (id, projectId, userId, action, details, createdAt) VALUES (?, ?, NULL, ?, ?, ?)",
+      )
+      .run(
+        rowId,
+        project.id,
+        "synthetic.note",
+        `free text mentioning ${shareeId} inline`,
+        new Date().toISOString(),
+      );
+    auditRepo.scrubUser(shareeId);
+    const after = conn.prepare("SELECT details FROM audit_log WHERE id = ?").get(rowId) as {
+      details: string;
+    };
+    expect(after.details).toBe(`free text mentioning ${shareeId} inline`);
+  });
 });

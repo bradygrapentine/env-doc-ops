@@ -82,6 +82,28 @@ export const tokenRepo = {
       .run(token, userId, newEmail, expiresAt);
     return { token, expiresAt };
   },
+  // Non-consuming peek used by the confirmation page so it can show the
+  // pending new email before the user clicks Confirm. Mail-client / corp URL
+  // prefetchers fetch the page on link-arrival; consumption only happens via
+  // consumeEmailChange below.
+  peekEmailChange(
+    token: string,
+  ): { userId: string; newEmail: string } | { error: "invalid" | "expired" | "used" } {
+    const conn = _dbInternal();
+    const row = conn.prepare("SELECT * FROM email_change_tokens WHERE token = ?").get(token) as
+      | {
+          token: string;
+          userId: string;
+          newEmail: string;
+          expiresAt: string;
+          usedAt: string | null;
+        }
+      | undefined;
+    if (!row) return { error: "invalid" };
+    if (row.usedAt) return { error: "used" };
+    if (Date.parse(row.expiresAt) < Date.now()) return { error: "expired" };
+    return { userId: row.userId, newEmail: row.newEmail };
+  },
   consumeEmailChange(
     token: string,
   ): { userId: string; newEmail: string } | { error: "invalid" | "expired" | "used" } {

@@ -14,9 +14,9 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 | State       | Count |
 | ----------- | ----- |
-| Ready       | 2     |
+| Ready       | 5     |
 | In progress | 0     |
-| Blocked     | 0     |
+| Blocked     | 1     |
 | Shipped     | 27    |
 
 Last `/backlog-sync`: 2026-05-01
@@ -27,7 +27,7 @@ Last `/backlog-sync`: 2026-05-01
 
 <!-- B-050 shipped — see §3 Shipped -->
 
-- **B-053 — Move rate limiter to a shared store before horizontal scale-out** · The B-050 limiter is per-Node-process (in-memory Map). On any multi-worker deploy (PM2 cluster, multiple containers, Vercel lambdas, Node `cluster`) an attacker round-robined across N workers gets N × 5 attempts per window. Swap `rate-limit.ts` for a Redis/Upstash-backed implementation behind the same `consume`/`resetSucceeded` API; `rate-limit-policy.ts` is the single point of change. Track this as **blocking before any non-single-process deploy.**
+<!-- B-053 moved to §1.5 Blocked -->
 
 <!-- B-051, B-052 shipped — see §3 Shipped -->
 
@@ -36,6 +36,20 @@ Last `/backlog-sync`: 2026-05-01
   2. `scrubUser` opens a `db().transaction(...)` even when called from `userRepo.delete`, which is already inside a transaction. Drop the inner transaction (callers wrap) or wrap the SELECT-loop too. SAVEPOINT makes this work today; clean up for clarity.
   3. The email-change peek endpoint reads `email_change_tokens` directly via `_dbInternal()`. Add `tokenRepo.peekEmailChange(token)` and route through it so the schema lives in one place.
   4. Add a test asserting `audit_log.createdAt` is preserved by `scrubUser` (existing tests cover `action` only).
+
+- **B-055 — Audit-log pagination** · `GET /api/projects/:id/audit?limit&before=<createdAt ISO>` (default 50, max 200). `auditRepo.list(projectId, {limit, before})`. `AuditPanel.tsx` Load-more button. Out of scope: retention/prune. Effort: S. Priority: P2.
+
+- **B-056 — Rate-limit signin / signup / forgot-password** · Spike first: confirm how to read client IP / request inside Auth.js v5 Credentials authorize, fall back to email-keyed limiting if needed. New `gateUnauthenticatedEndpoint(key, action, bucket)` in `rate-limit-policy.ts`. Limits: signin/forgot 10/15min; signup 3/hour. Effort: S. Priority: P1.
+
+- **B-057 — CSV upload row + byte cap** · Spike first: choose body-size mechanism on Next.js 14 App Router. Cap: 1 MiB body, 5000 rows post-parse. 413 (body) / 422 (rows) with clear error in `UploadCsv`. Effort: S. Priority: P1.
+
+- **B-058 — Email-change notification to old address** · On successful `change-email` token issuance, also email the _current_ address with a "wasn't me" CTA. Old-address email must NOT contain the new address plaintext. Tests assert two emails captured; old contains CTA, not new email string. Effort: S. Priority: P1.
+
+---
+
+## §1.5 Blocked
+
+- **B-053 — Move rate limiter to a shared store before horizontal scale-out** · The B-050 limiter is per-Node-process (in-memory Map). On any multi-worker deploy (PM2 cluster, multiple containers, Vercel lambdas, Node `cluster`) an attacker round-robined across N workers gets N × 5 attempts per window. Swap `rate-limit.ts` for a Redis/Upstash-backed implementation behind the same `consume`/`resetSucceeded` API; `rate-limit-policy.ts` is the single point of change. **Blocked on:** Redis hosting decision (Upstash vs Vercel KV vs self-hosted) — write `docs/adr/0001-rate-limit-shared-store.md` first. **Blocking before any non-single-process deploy.**
 
 Followups noted during execution (low priority polish):
 
@@ -59,6 +73,13 @@ These are explicitly **not** the product (per README "What This Is Not"). Captur
 - Replacement for a stamped engineering review
 
 If a stakeholder pushes for any of these, see `envdocos_traffic_v1_package_full/docs/01_product_spec.md` and re-anchor on "report compiler, not modeler."
+
+**Tech-debt observations (2026-05-01, plan 0006):**
+
+- Coverage exclusions to revisit: `auth.ts`, `auth.config.ts`, `middleware.ts`, `email.ts` (real-send integration test would close most).
+- `console.error` scattered; no structured logger.
+- `audit_log` retention/prune policy — not in B-055; size when a cron host exists.
+- No CSRF check on POST endpoints beyond Auth.js's built-in (manual fetch routes assume same-origin).
 
 ---
 

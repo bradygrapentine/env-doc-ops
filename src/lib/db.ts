@@ -823,29 +823,31 @@ export const auditRepo = {
   // and createdAt are preserved — the audit history stays intact, only the
   // personal identifier is purged. Idempotent: a second call has no effect
   // because "[scrubbed]" no longer matches the userId substring.
+  //
+  // Caller wraps the scrub + delete in a transaction (see userRepo.delete);
+  // we don't open one here so the callsite is the single source of atomicity.
+  //
+  // details is contractually JSON across the codebase. Non-JSON rows are
+  // skipped — a substring rewrite over arbitrary text is too broad if a UUID
+  // ever appears inside unrelated free text.
   scrubUser(userId: string): void {
     if (!userId) return;
     const rows = db()
       .prepare("SELECT id, details FROM audit_log WHERE details LIKE ?")
       .all(`%${userId}%`) as Array<{ id: string; details: string | null }>;
     const update = db().prepare("UPDATE audit_log SET details = ? WHERE id = ?");
-    db().transaction(() => {
-      for (const row of rows) {
-        if (!row.details) continue;
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(row.details);
-        } catch {
-          // non-JSON details: fall back to raw string replace
-          const replaced = row.details.split(userId).join("[scrubbed]");
-          if (replaced !== row.details) update.run(replaced, row.id);
-          continue;
-        }
-        const scrubbed = scrubValue(parsed, userId);
-        const next = JSON.stringify(scrubbed);
-        if (next !== row.details) update.run(next, row.id);
+    for (const row of rows) {
+      if (!row.details) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(row.details);
+      } catch {
+        continue;
       }
-    })();
+      const scrubbed = scrubValue(parsed, userId);
+      const next = JSON.stringify(scrubbed);
+      if (next !== row.details) update.run(next, row.id);
+    }
   },
   listForProject(projectId: string, limit = 100): AuditEntry[] {
     return db()
