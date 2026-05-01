@@ -14,7 +14,7 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 | State       | Count |
 | ----------- | ----- |
-| Ready       | 2     |
+| Ready       | 3     |
 | In progress | 0     |
 | Blocked     | 0     |
 | Shipped     | 25    |
@@ -26,6 +26,9 @@ Last `/backlog-sync`: 2026-05-01
 ## §1 Ready
 
 <!-- B-050 shipped — see §3 Shipped -->
+
+- **B-053 — Move rate limiter to a shared store before horizontal scale-out** · The B-050 limiter is per-Node-process (in-memory Map). On any multi-worker deploy (PM2 cluster, multiple containers, Vercel lambdas, Node `cluster`) an attacker round-robined across N workers gets N × 5 attempts per window. Swap `rate-limit.ts` for a Redis/Upstash-backed implementation behind the same `consume`/`resetSucceeded` API; `rate-limit-policy.ts` is the single point of change. Track this as **blocking before any non-single-process deploy.**
+
 - **B-051 — Replace GET-confirm on email-change with a confirmation page** · Mail clients / corporate URL scanners that prefetch links currently burn the single-use email-change token before the user clicks. Switch to a page that shows "Confirm new email = X?" with a POST button. Same pattern is worth applying to verification email links eventually.
 - **B-052 — Audit-log details retention on account delete** · `audit_log.userId` is set to NULL on user delete, but the `details` JSON column still contains the deleted user's UUID (and any email logged before account-delete). For GDPR-style erasure we need to scrub or hash these fields when the referenced user is deleted.
 
