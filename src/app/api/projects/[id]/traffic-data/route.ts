@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { projectRepo, trafficRepo } from "@/lib/db";
+import { trafficRepo } from "@/lib/db";
 import { parseTrafficCsv } from "@/lib/csv";
+import { requireOwnedProject } from "@/lib/session";
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const project = projectRepo.get(params.id);
-  if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  const guard = await requireOwnedProject(params.id);
+  if (!guard.ok) return guard.error;
 
   const text = await req.text();
   if (!text.trim()) return NextResponse.json({ error: "Empty CSV body" }, { status: 400 });

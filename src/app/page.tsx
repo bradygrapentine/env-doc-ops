@@ -1,11 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { projectRepo } from "@/lib/db";
+import { getSessionUserId } from "@/lib/session";
 import ProjectList from "./ProjectList";
 
 export const dynamic = "force-dynamic";
 
-export default function ProjectsPage() {
-  const projects = projectRepo.list();
+export default async function ProjectsPage() {
+  const userId = await getSessionUserId();
+  if (!userId) redirect("/signin");
+  const projects = projectRepo.list(userId);
 
   return (
     <div>

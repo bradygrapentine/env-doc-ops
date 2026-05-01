@@ -1,3 +1,10 @@
+export type User = {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: string;
+};
+
 export type ManualInputs = {
   growthRate?: string;
   tripGenAssumptions?: string;
@@ -7,6 +14,7 @@ export type ManualInputs = {
 
 export type Project = {
   id: string;
+  userId: string | null;
   name: string;
   location: string;
   jurisdiction: string;

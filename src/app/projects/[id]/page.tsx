@@ -1,16 +1,19 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { projectRepo, trafficRepo } from "@/lib/db";
 import { calculateMetrics } from "@/lib/reportGenerator";
+import { getSessionUserId } from "@/lib/session";
 import UploadCsv from "./UploadCsv";
 import DeleteButton from "./DeleteButton";
 import ManualInputsForm from "./ManualInputsForm";
 
 export const dynamic = "force-dynamic";
 
-export default function ProjectPage({ params }: { params: { id: string } }) {
+export default async function ProjectPage({ params }: { params: { id: string } }) {
+  const userId = await getSessionUserId();
+  if (!userId) redirect(`/signin?callbackUrl=/projects/${params.id}`);
   const project = projectRepo.get(params.id);
-  if (!project) notFound();
+  if (!project || project.userId !== userId) notFound();
 
   const rows = trafficRepo.listByProject(params.id);
   const metrics = calculateMetrics(rows);

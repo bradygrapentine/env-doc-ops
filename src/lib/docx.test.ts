@@ -5,6 +5,7 @@ import type { Project, Report, TrafficCountRow } from "./types";
 
 const project: Project = {
   id: "p1",
+  userId: null,
   name: "Test Project",
   location: "Anywhere",
   jurisdiction: "Test City",

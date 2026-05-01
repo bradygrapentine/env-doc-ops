@@ -14,10 +14,10 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 | State       | Count |
 | ----------- | ----- |
-| Ready       | 4     |
+| Ready       | 3     |
 | In progress | 0     |
 | Blocked     | 0     |
-| Shipped     | 12    |
+| Shipped     | 13    |
 
 ---
 
@@ -43,11 +43,11 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 ### Auth & multi-user
 
-- **B-040 — Single-user auth (email / magic link)** · P1 · M
-  V1 has zero auth. Add NextAuth.js with magic-link, scope projects to the authenticated user.
-
 - **B-041 — Per-project sharing** · P2 · L
   Invite a collaborator by email; read or read+write. Depends on B-040.
+
+- **B-042 — Account management (password reset, email verification)** · P1 · M
+  Followup from B-040: forgot-password flow, email verification, change-password. Requires SMTP/Resend.
 
 ---
 
@@ -65,6 +65,9 @@ If a stakeholder pushes for any of these, see `envdocos_traffic_v1_package_full/
 ---
 
 ## §3 Shipped
+
+- **B-040 — Real auth (email + password)** · 2026-04-30
+  Auth.js v5 with Credentials provider + bcryptjs. New `users` table, `projects.userId` column, middleware redirects unauth pages and 401s API routes. Signup adopts pre-existing orphan projects on first user. Cross-user isolation enforced (404 on others' projects). Test backdoor via `AUTH_TEST_USER_ID` env (NODE_ENV=test only).
 
 - **B-012 — PDF export** · `dfa56c3` · 2026-04-30
   `pdfkit`-rendered PDF mirroring the DOCX structure: cover page, numbered section headings, peak summary + per-row traffic table inside Existing Conditions. Editor has Export PDF button next to Export DOCX. Required marking `pdfkit` as a server-external package in `next.config.mjs` so its AFM font files resolve at runtime.

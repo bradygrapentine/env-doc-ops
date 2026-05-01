@@ -7,6 +7,7 @@ beforeEach(() => {
 });
 
 const baseInput = {
+  userId: null,
   name: "Original",
   location: "City",
   jurisdiction: "Town",

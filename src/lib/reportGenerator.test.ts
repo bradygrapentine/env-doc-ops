@@ -4,6 +4,7 @@ import type { Project, TrafficCountRow } from "./types";
 
 const project: Project = {
   id: "p1",
+  userId: null,
   name: "West Loop Mixed Use",
   location: "123 Main St, Chicago, IL",
   jurisdiction: "Chicago",

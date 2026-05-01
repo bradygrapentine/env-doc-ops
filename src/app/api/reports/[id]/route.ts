@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { reportRepo } from "@/lib/db";
+import { requireOwnedReport } from "@/lib/session";
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const report = reportRepo.get(params.id);
-  if (!report) return NextResponse.json({ error: "Report not found" }, { status: 404 });
-  return NextResponse.json(report);
+  const guard = await requireOwnedReport(params.id);
+  if (!guard.ok) return guard.error;
+  return NextResponse.json(guard.report);
 }

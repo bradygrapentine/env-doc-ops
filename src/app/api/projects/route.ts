@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { projectRepo } from "@/lib/db";
+import { getSessionUserId } from "@/lib/session";
 
 export async function GET() {
-  return NextResponse.json(projectRepo.list());
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  return NextResponse.json(projectRepo.list(userId));
 }
 
 export async function POST(req: Request) {
+  const userId = await getSessionUserId();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
 
@@ -23,6 +29,7 @@ export async function POST(req: Request) {
   }
 
   const project = projectRepo.create({
+    userId,
     name: body.name,
     location: body.location,
     jurisdiction: body.jurisdiction,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { reportRepo } from "@/lib/db";
+import { requireOwnedReport } from "@/lib/session";
 import type { SectionStatus } from "@/lib/types";
 
 const STATUSES: SectionStatus[] = ["draft", "reviewed", "final"];
@@ -8,6 +9,9 @@ export async function PATCH(
   req: Request,
   { params }: { params: { id: string; sectionId: string } },
 ) {
+  const guard = await requireOwnedReport(params.id);
+  if (!guard.ok) return guard.error;
+
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
 

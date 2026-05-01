@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { projectRepo, trafficRepo, reportRepo } from "@/lib/db";
+import { trafficRepo, reportRepo } from "@/lib/db";
 import { generateReportSections } from "@/lib/reportGenerator";
 import { planRegenerate } from "@/lib/reportRegenerate";
+import { requireOwnedProject } from "@/lib/session";
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
-  const project = projectRepo.get(params.id);
-  if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  const guard = await requireOwnedProject(params.id);
+  if (!guard.ok) return guard.error;
+  const project = guard.project;
 
   const rows = trafficRepo.listByProject(params.id);
   if (rows.length === 0) {

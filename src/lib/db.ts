@@ -9,13 +9,23 @@ import type {
   ReportSection,
   Period,
   SectionStatus,
+  User,
 } from "./types";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 
 const SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    passwordHash TEXT NOT NULL,
+    name TEXT NOT NULL,
+    createdAt TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
+    userId TEXT REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     location TEXT NOT NULL,
     jurisdiction TEXT NOT NULL,
@@ -26,6 +36,7 @@ const SCHEMA_SQL = `
     manualInputs TEXT,
     createdAt TEXT NOT NULL
   );
+  CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(userId);
 
   CREATE TABLE IF NOT EXISTS traffic_counts (
     id TEXT PRIMARY KEY,
@@ -73,6 +84,14 @@ function migrate(conn: Database.Database) {
     const msg = (e as Error).message;
     if (!/duplicate column name/i.test(msg)) throw e;
   }
+
+  try {
+    conn.exec(`ALTER TABLE projects ADD COLUMN userId TEXT REFERENCES users(id) ON DELETE CASCADE`);
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (!/duplicate column name/i.test(msg)) throw e;
+  }
+  conn.exec(`CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(userId)`);
 }
 
 type ProjectRow = Omit<Project, "manualInputs"> & { manualInputs: string | null };
@@ -148,10 +167,12 @@ const uid = () =>
 const now = () => new Date().toISOString();
 
 export const projectRepo = {
-  list(): Project[] {
-    const rows = db()
-      .prepare("SELECT * FROM projects ORDER BY createdAt DESC")
-      .all() as ProjectRow[];
+  list(userId?: string): Project[] {
+    const sql = userId
+      ? "SELECT * FROM projects WHERE userId = ? ORDER BY createdAt DESC"
+      : "SELECT * FROM projects ORDER BY createdAt DESC";
+    const stmt = db().prepare(sql);
+    const rows = (userId ? stmt.all(userId) : stmt.all()) as ProjectRow[];
     return rows.map((r) => hydrateProject(r)!);
   },
   get(id: string): Project | undefined {
@@ -165,12 +186,13 @@ export const projectRepo = {
     db()
       .prepare(
         `
-      INSERT INTO projects (id, name, location, jurisdiction, clientName, projectType, developmentSummary, preparedBy, manualInputs, createdAt)
-      VALUES (@id, @name, @location, @jurisdiction, @clientName, @projectType, @developmentSummary, @preparedBy, @manualInputs, @createdAt)
+      INSERT INTO projects (id, userId, name, location, jurisdiction, clientName, projectType, developmentSummary, preparedBy, manualInputs, createdAt)
+      VALUES (@id, @userId, @name, @location, @jurisdiction, @clientName, @projectType, @developmentSummary, @preparedBy, @manualInputs, @createdAt)
     `,
       )
       .run({
         ...project,
+        userId: project.userId ?? null,
         clientName: project.clientName ?? null,
         preparedBy: project.preparedBy ?? null,
         manualInputs: serializeManualInputs(project.manualInputs),
@@ -320,6 +342,44 @@ export const reportRepo = {
       .run(...values, reportId, sectionId);
     conn.prepare("UPDATE reports SET updatedAt = ? WHERE id = ?").run(now(), reportId);
     return reportRepo.get(reportId);
+  },
+};
+
+type UserRow = User & { passwordHash: string };
+
+export const userRepo = {
+  findByEmail(email: string): (User & { passwordHash: string }) | undefined {
+    return db().prepare("SELECT * FROM users WHERE email = ?").get(email.toLowerCase()) as
+      | UserRow
+      | undefined;
+  },
+  findById(id: string): User | undefined {
+    const row = db()
+      .prepare("SELECT id, email, name, createdAt FROM users WHERE id = ?")
+      .get(id) as User | undefined;
+    return row;
+  },
+  count(): number {
+    const row = db().prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
+    return row.n;
+  },
+  create(input: { email: string; passwordHash: string; name: string }): User {
+    const user: User = {
+      id: uid(),
+      email: input.email.toLowerCase(),
+      name: input.name,
+      createdAt: now(),
+    };
+    db()
+      .prepare(
+        "INSERT INTO users (id, email, passwordHash, name, createdAt) VALUES (@id, @email, @passwordHash, @name, @createdAt)",
+      )
+      .run({ ...user, passwordHash: input.passwordHash });
+    return user;
+  },
+  claimOrphanProjects(userId: string): number {
+    const info = db().prepare("UPDATE projects SET userId = ? WHERE userId IS NULL").run(userId);
+    return info.changes;
   },
 };
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { projectRepo } from "@/lib/db";
+import { requireOwnedProject } from "@/lib/session";
 import type { ManualInputs } from "@/lib/types";
 
 const MANUAL_INPUT_KEYS = [
@@ -10,9 +11,9 @@ const MANUAL_INPUT_KEYS = [
 ] as const;
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const project = projectRepo.get(params.id);
-  if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
-  return NextResponse.json(project);
+  const guard = await requireOwnedProject(params.id);
+  if (!guard.ok) return guard.error;
+  return NextResponse.json(guard.project);
 }
 
 const EDITABLE = [
@@ -27,6 +28,9 @@ const EDITABLE = [
 type EditableKey = (typeof EDITABLE)[number];
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const guard = await requireOwnedProject(params.id);
+  if (!guard.ok) return guard.error;
+
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
@@ -89,7 +93,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const ok = projectRepo.delete(params.id);
-  if (!ok) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  const guard = await requireOwnedProject(params.id);
+  if (!guard.ok) return guard.error;
+  projectRepo.delete(params.id);
   return new Response(null, { status: 204 });
 }

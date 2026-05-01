@@ -1,8 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import bcrypt from "bcryptjs";
 import { resetDb } from "./db";
 import { jsonReq, textReq, emptyReq } from "./routes";
+import { userRepo } from "@/lib/db";
 
 import { POST as createProject, GET as listProjects } from "@/app/api/projects/route";
 import {
@@ -18,6 +20,7 @@ import { GET as getReport } from "@/app/api/reports/[id]/route";
 import { PATCH as patchSection } from "@/app/api/reports/[id]/sections/[sectionId]/route";
 import { POST as exportDocx } from "@/app/api/reports/[id]/export-docx/route";
 import { POST as exportPdf } from "@/app/api/reports/[id]/export-pdf/route";
+import { POST as signupRoute } from "@/app/api/auth/signup/route";
 
 const SAMPLE_CSV = fs.readFileSync(
   path.join(process.cwd(), "sample_data/sample_traffic_counts.csv"),
@@ -50,8 +53,22 @@ async function makeReport() {
   return { project, reportId: body.reportId as string, sections: body.sections };
 }
 
+function seedUser(email = "test@example.com"): string {
+  const u = userRepo.create({
+    email,
+    name: "Test User",
+    passwordHash: bcrypt.hashSync("password123", 4),
+  });
+  return u.id;
+}
+
 beforeEach(() => {
   resetDb();
+  process.env.AUTH_TEST_USER_ID = seedUser();
+});
+
+afterEach(() => {
+  delete process.env.AUTH_TEST_USER_ID;
 });
 
 describe("POST /api/projects", () => {
@@ -375,5 +392,106 @@ describe("POST /api/reports/:id/export-pdf", () => {
   it("returns 404 for unknown report", async () => {
     const res = await exportPdf(emptyReq("POST"), { params: { id: "nope" } });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/auth/signup", () => {
+  it("creates a user and returns id/email/name", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    resetDb();
+    const res = await signupRoute(
+      jsonReq("POST", { email: "alice@example.com", password: "password123", name: "Alice" }),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.email).toBe("alice@example.com");
+    expect(body.name).toBe("Alice");
+    expect(body.claimed).toBe(0);
+  });
+
+  it("rejects short passwords", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    resetDb();
+    const res = await signupRoute(
+      jsonReq("POST", { email: "a@b.c", password: "short", name: "A" }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects duplicate emails", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    resetDb();
+    const body = { email: "dup@example.com", password: "password123", name: "Dup" };
+    const r1 = await signupRoute(jsonReq("POST", body));
+    expect(r1.status).toBe(200);
+    const r2 = await signupRoute(jsonReq("POST", body));
+    expect(r2.status).toBe(409);
+  });
+
+  it("first user claims orphan projects", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    resetDb();
+    // Create an orphan project (userId=null) by going through repo directly.
+    const { projectRepo } = await import("@/lib/db");
+    projectRepo.create({
+      userId: null,
+      name: "Legacy",
+      location: "X",
+      jurisdiction: "Y",
+      projectType: "P",
+      developmentSummary: "S",
+    });
+    const res = await signupRoute(
+      jsonReq("POST", { email: "first@example.com", password: "password123", name: "First" }),
+    );
+    const body = await res.json();
+    expect(body.claimed).toBe(1);
+
+    process.env.AUTH_TEST_USER_ID = body.id;
+    const list = await listProjects();
+    const projects = await list.json();
+    expect(projects).toHaveLength(1);
+    expect(projects[0].userId).toBe(body.id);
+  });
+});
+
+describe("Authorization: unsigned requests", () => {
+  it("GET /api/projects returns 401 with no session", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await listProjects();
+    expect(res.status).toBe(401);
+  });
+
+  it("POST /api/projects returns 401 with no session", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await createProject(jsonReq("POST", PROJECT_BODY));
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /api/projects/:id returns 401 with no session", async () => {
+    const projectId = (await makeProject()).id;
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await getProject(emptyReq("GET"), { params: { id: projectId } });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("Cross-user isolation", () => {
+  it("user A cannot see user B's project", async () => {
+    const projectA = await makeProject();
+    const userBId = seedUser("b@example.com");
+    process.env.AUTH_TEST_USER_ID = userBId;
+    const list = await listProjects();
+    expect(await list.json()).toEqual([]);
+    const get = await getProject(emptyReq("GET"), { params: { id: projectA.id } });
+    expect(get.status).toBe(404);
+  });
+
+  it("user A cannot delete user B's project", async () => {
+    const projectA = await makeProject();
+    const userBId = seedUser("b2@example.com");
+    process.env.AUTH_TEST_USER_ID = userBId;
+    const del = await deleteProject(emptyReq("DELETE"), { params: { id: projectA.id } });
+    expect(del.status).toBe(404);
   });
 });
