@@ -50,7 +50,7 @@ export async function POST(req: Request) {
   }
 
   const { token } = tokenRepo.createEmailChange(userId, newEmail);
-  const link = `${emailLinkBase(req)}/api/auth/confirm-email-change?token=${token}`;
+  const link = `${emailLinkBase(req)}/account/confirm-email-change?token=${token}`;
   await sendEmailChangeConfirmation(newEmail, link);
 
   return NextResponse.json({ ok: true });
