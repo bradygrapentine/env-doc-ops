@@ -56,3 +56,9 @@ export async function sendPasswordResetEmail(to: string, link: string): Promise<
   const body = `A password reset was requested for your EnvDocOS Traffic account.\n\nClick the link below to set a new password:\n\n${link}\n\nThis link expires in 1 hour. If you did not request this, you can ignore this email.\n`;
   await send(to, subject, body, link);
 }
+
+export async function sendEmailChangeConfirmation(to: string, link: string): Promise<void> {
+  const subject = "Confirm your new EnvDocOS Traffic email address";
+  const body = `An email change was requested for your EnvDocOS Traffic account.\n\nConfirm this is your new email by clicking the link below:\n\n${link}\n\nThis link expires in 1 hour. If you did not request this, you can ignore this email.\n`;
+  await send(to, subject, body, link);
+}

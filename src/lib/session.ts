@@ -49,7 +49,7 @@ export async function requireProjectAccess(
       error: NextResponse.json({ error: "Project not found" }, { status: 404 }),
     };
   }
-  if (mode === "write" && role !== "owner") {
+  if (mode === "write" && role !== "owner" && role !== "editor") {
     return {
       ok: false,
       error: NextResponse.json({ error: "Read-only access" }, { status: 403 }),
@@ -85,7 +85,7 @@ export async function requireReportAccess(
       error: NextResponse.json({ error: "Report not found" }, { status: 404 }),
     };
   }
-  if (mode === "write" && role !== "owner") {
+  if (mode === "write" && role !== "owner" && role !== "editor") {
     return {
       ok: false,
       error: NextResponse.json({ error: "Read-only access" }, { status: 403 }),

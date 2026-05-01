@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { trafficRepo, reportRepo } from "@/lib/db";
+import { auditRepo, trafficRepo, reportRepo } from "@/lib/db";
 import { generateReportSections } from "@/lib/reportGenerator";
 import { planRegenerate } from "@/lib/reportRegenerate";
 import { requireOwnedProject } from "@/lib/session";
@@ -21,6 +21,13 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const existing = reportRepo.getByProject(params.id);
   const { merged, refreshed, preserved } = planRegenerate(existing?.sections, fresh);
   const report = reportRepo.upsertForProject(params.id, merged);
+
+  auditRepo.log({
+    projectId: params.id,
+    userId: guard.userId,
+    action: existing ? "report.regenerate" : "report.generate",
+    details: { refreshed: refreshed.length, preserved: preserved.length },
+  });
 
   return NextResponse.json({
     reportId: report.id,

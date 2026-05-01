@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { projectRepo } from "@/lib/db";
+import { auditRepo, projectRepo } from "@/lib/db";
 import { requireOwnedProject, requireProjectAccess } from "@/lib/session";
 import type { ManualInputs } from "@/lib/types";
 
@@ -89,12 +89,21 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const updated = projectRepo.update(params.id, patch);
   if (!updated) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  auditRepo.log({
+    projectId: params.id,
+    userId: guard.userId,
+    action: "project.update",
+    details: { fields: Object.keys(patch) },
+  });
   return NextResponse.json(updated);
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const guard = await requireOwnedProject(params.id);
+  const guard = await requireProjectAccess(params.id, "read");
   if (!guard.ok) return guard.error;
+  if (guard.role !== "owner") {
+    return NextResponse.json({ error: "Owner-only" }, { status: 403 });
+  }
   projectRepo.delete(params.id);
   return new Response(null, { status: 204 });
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { trafficRepo } from "@/lib/db";
+import { auditRepo, trafficRepo } from "@/lib/db";
 import { parseTrafficCsv } from "@/lib/csv";
 import { requireOwnedProject } from "@/lib/session";
 
@@ -15,6 +15,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const stored = trafficRepo.replaceForProject(params.id, parsed.rows);
   const intersections = Array.from(new Set(stored.map((r) => r.intersection)));
+
+  auditRepo.log({
+    projectId: params.id,
+    userId: guard.userId,
+    action: "traffic.import",
+    details: { rowsImported: stored.length, intersections: intersections.length },
+  });
 
   return NextResponse.json({ rowsImported: stored.length, intersections });
 }

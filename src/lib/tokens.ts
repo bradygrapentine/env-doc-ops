@@ -3,6 +3,7 @@ import { _dbInternal } from "./db";
 
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const RESET_TTL_MS = 60 * 60 * 1000; // 1h
+const EMAIL_CHANGE_TTL_MS = 60 * 60 * 1000; // 1h
 
 function newToken(): string {
   return crypto.randomBytes(32).toString("hex");
@@ -69,5 +70,39 @@ export const tokenRepo = {
   },
   consumeReset(token: string): ConsumeResult {
     return consume("password_reset_tokens", token);
+  },
+  createEmailChange(userId: string, newEmail: string): { token: string; expiresAt: string } {
+    const conn = _dbInternal();
+    const token = newToken();
+    const expiresAt = new Date(Date.now() + EMAIL_CHANGE_TTL_MS).toISOString();
+    conn
+      .prepare(
+        "INSERT INTO email_change_tokens (token, userId, newEmail, expiresAt, usedAt) VALUES (?, ?, ?, ?, NULL)",
+      )
+      .run(token, userId, newEmail, expiresAt);
+    return { token, expiresAt };
+  },
+  consumeEmailChange(
+    token: string,
+  ): { userId: string; newEmail: string } | { error: "invalid" | "expired" | "used" } {
+    const conn = _dbInternal();
+    const row = conn.prepare("SELECT * FROM email_change_tokens WHERE token = ?").get(token) as
+      | {
+          token: string;
+          userId: string;
+          newEmail: string;
+          expiresAt: string;
+          usedAt: string | null;
+        }
+      | undefined;
+    if (!row) return { error: "invalid" };
+    if (row.usedAt) return { error: "used" };
+    if (Date.parse(row.expiresAt) < Date.now()) return { error: "expired" };
+    const ts = nowIso();
+    const info = conn
+      .prepare("UPDATE email_change_tokens SET usedAt = ? WHERE token = ? AND usedAt IS NULL")
+      .run(ts, token);
+    if (info.changes === 0) return { error: "used" };
+    return { userId: row.userId, newEmail: row.newEmail };
   },
 };

@@ -88,4 +88,40 @@ describe("SharesPanel", () => {
     await user.click(screen.getByRole("button", { name: /remove/i }));
     await waitFor(() => expect(screen.queryByText("User One")).not.toBeInTheDocument());
   });
+
+  it("invite role select sends role=editor in POST body", async () => {
+    const user = userEvent.setup();
+    const fetchSpy = (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ...SHARE, role: "editor" }), { status: 200 }),
+      );
+    render(<SharesPanel projectId="p1" />);
+    await waitFor(() => screen.getByLabelText(/invite by email/i));
+    await user.selectOptions(screen.getByLabelText(/invite role/i), "editor");
+    await user.type(screen.getByLabelText(/invite by email/i), "x@x.com");
+    await user.click(screen.getByRole("button", { name: /^invite$/i }));
+    const body = JSON.parse(fetchSpy.mock.calls[1]![1]!.body as string);
+    expect(body.role).toBe("editor");
+  });
+
+  it("changing the role select PATCHes the share", async () => {
+    const user = userEvent.setup();
+    const fetchSpy = (global.fetch as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(new Response(JSON.stringify([SHARE]), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    render(<SharesPanel projectId="p1" />);
+    await screen.findByText("User One");
+    await user.selectOptions(screen.getByLabelText(/role for/i), "editor");
+    expect(fetchSpy).toHaveBeenLastCalledWith(
+      `/api/projects/p1/shares/${SHARE.userId}`,
+      expect.objectContaining({ method: "PATCH" }),
+    );
+  });
+
+  it("swallows initial fetch errors and shows empty state", async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("net"));
+    render(<SharesPanel projectId="p1" />);
+    expect(await screen.findByText(/not shared with anyone/i)).toBeInTheDocument();
+  });
 });

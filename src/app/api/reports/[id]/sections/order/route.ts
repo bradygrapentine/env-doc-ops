@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { reportRepo } from "@/lib/db";
+import { auditRepo, reportRepo } from "@/lib/db";
 import { requireOwnedReport } from "@/lib/session";
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -25,5 +25,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     );
 
   const updated = reportRepo.get(params.id);
+  auditRepo.log({
+    projectId: guard.project.id,
+    userId: guard.userId,
+    action: "section.reorder",
+    details: { count: (orderedIds as string[]).length },
+  });
   return NextResponse.json(updated);
 }

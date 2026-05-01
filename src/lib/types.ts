@@ -72,8 +72,8 @@ export type Report = {
   updatedAt: string;
 };
 
-export type ShareRole = "reader";
+export type ShareRole = "reader" | "editor";
 
-export type ProjectAccessRole = "owner" | "reader";
+export type ProjectAccessRole = "owner" | "reader" | "editor";
 
 export type ProjectListEntry = Project & { role: ProjectAccessRole };

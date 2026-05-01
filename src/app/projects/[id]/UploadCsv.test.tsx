@@ -165,4 +165,68 @@ describe("UploadCsv", () => {
       screen.queryByRole("button", { name: /pick a different file/i }),
     ).not.toBeInTheDocument();
   });
+
+  it("renders mixed valid + invalid rows in the preview table", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          headers: ["intersection", "period", "inbound", "outbound", "total"],
+          totalRows: 3,
+          validRows: [
+            { intersection: "A", period: "AM", inbound: 1, outbound: 1, total: 2 },
+            { intersection: "C", period: "PM", inbound: 3, outbound: 3, total: 6 },
+          ],
+          invalidRows: [
+            {
+              row: 3,
+              raw: { intersection: "B", period: "", inbound: "x", outbound: "1", total: "1" },
+              issues: [{ row: 3, message: "period required" }],
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    render(<UploadCsv projectId="p1" initialRowCount={0} />);
+    await userEvent.upload(fileInput(), csvFile());
+    await userEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    expect(await screen.findByText("period required")).toBeInTheDocument();
+    expect(screen.getByText("A")).toBeInTheDocument();
+    expect(screen.getByText("B")).toBeInTheDocument();
+    expect(screen.getByText("C")).toBeInTheDocument();
+  });
+
+  it("surfaces import errors after preview", async () => {
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            headers: [],
+            totalRows: 1,
+            validRows: [{ intersection: "A", period: "AM", inbound: 1, outbound: 1, total: 2 }],
+            invalidRows: [],
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "import boom" }), { status: 500 }),
+      );
+    render(<UploadCsv projectId="p1" initialRowCount={0} />);
+    await userEvent.upload(fileInput(), csvFile());
+    await userEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /confirm import \(1 rows\)/i }),
+    );
+    expect(await screen.findByText("import boom")).toBeInTheDocument();
+  });
+
+  it("surfaces generate-report errors", async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "gen boom" }), { status: 500 }),
+    );
+    render(<UploadCsv projectId="p1" initialRowCount={3} />);
+    await userEvent.click(screen.getByRole("button", { name: /generate report/i }));
+    expect(await screen.findByText("gen boom")).toBeInTheDocument();
+  });
 });

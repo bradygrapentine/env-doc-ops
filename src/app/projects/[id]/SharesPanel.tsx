@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ShareRole } from "@/lib/types";
 
 type Share = {
   userId: string;
   email: string;
   name: string;
-  role: "reader";
+  role: ShareRole;
   createdAt: string;
 };
 
@@ -14,6 +15,7 @@ export default function SharesPanel({ projectId }: { projectId: string }) {
   const [shares, setShares] = useState<Share[]>([]);
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState("");
+  const [role, setRole] = useState<ShareRole>("reader");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +50,7 @@ export default function SharesPanel({ projectId }: { projectId: string }) {
       const res = await fetch(`/api/projects/${projectId}/shares`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmed }),
+        body: JSON.stringify({ email: trimmed, role }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -57,12 +59,23 @@ export default function SharesPanel({ projectId }: { projectId: string }) {
       }
       const share = (await res.json()) as Share;
       setShares((prev) => {
-        if (prev.find((s) => s.userId === share.userId)) return prev;
-        return [...prev, share];
+        const without = prev.filter((s) => s.userId !== share.userId);
+        return [...without, share];
       });
       setEmail("");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function changeRole(userId: string, nextRole: ShareRole) {
+    const res = await fetch(`/api/projects/${projectId}/shares/${userId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: nextRole }),
+    });
+    if (res.ok) {
+      setShares((prev) => prev.map((s) => (s.userId === userId ? { ...s, role: nextRole } : s)));
     }
   }
 
@@ -86,17 +99,26 @@ export default function SharesPanel({ projectId }: { projectId: string }) {
             <li key={s.userId} className="flex items-center justify-between py-2 text-sm">
               <div>
                 <div className="font-medium">{s.name}</div>
-                <div className="text-gray-500 text-xs">
-                  {s.email} · {s.role}
-                </div>
+                <div className="text-gray-500 text-xs">{s.email}</div>
               </div>
-              <button
-                type="button"
-                onClick={() => remove(s.userId)}
-                className="text-xs text-red-600 hover:underline"
-              >
-                Remove
-              </button>
+              <div className="flex items-center gap-2">
+                <select
+                  aria-label={`Role for ${s.email}`}
+                  value={s.role}
+                  onChange={(e) => changeRole(s.userId, e.target.value as ShareRole)}
+                  className="text-xs border rounded px-2 py-1"
+                >
+                  <option value="reader">reader</option>
+                  <option value="editor">editor</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => remove(s.userId)}
+                  className="text-xs text-red-600 hover:underline"
+                >
+                  Remove
+                </button>
+              </div>
             </li>
           ))}
         </ul>
@@ -104,7 +126,7 @@ export default function SharesPanel({ projectId }: { projectId: string }) {
       <form onSubmit={invite} className="flex flex-col gap-2 sm:flex-row sm:items-end">
         <div className="flex-1">
           <label className="text-xs text-gray-500" htmlFor="invite-email">
-            Invite by email (read-only)
+            Invite by email
           </label>
           <input
             id="invite-email"
@@ -115,6 +137,15 @@ export default function SharesPanel({ projectId }: { projectId: string }) {
             className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
           />
         </div>
+        <select
+          aria-label="Invite role"
+          value={role}
+          onChange={(e) => setRole(e.target.value as ShareRole)}
+          className="rounded border border-gray-300 px-2 py-2 text-sm"
+        >
+          <option value="reader">reader</option>
+          <option value="editor">editor</option>
+        </select>
         <button
           type="submit"
           disabled={busy}

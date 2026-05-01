@@ -1,23 +1,41 @@
 import { NextResponse } from "next/server";
-import { shareRepo, userRepo } from "@/lib/db";
+import { auditRepo, shareRepo, userRepo } from "@/lib/db";
 import { requireProjectAccess } from "@/lib/session";
+import type { ShareRole } from "@/lib/types";
+
+function ownerOnly(guard: { role: string }) {
+  return guard.role === "owner";
+}
+
+function parseRole(raw: unknown): ShareRole | null {
+  if (raw === undefined) return "reader";
+  if (raw === "reader" || raw === "editor") return raw;
+  return null;
+}
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const guard = await requireProjectAccess(params.id, "read");
   if (!guard.ok) return guard.error;
-  if (guard.role !== "owner") {
-    return NextResponse.json({ error: "Read-only access" }, { status: 403 });
+  if (!ownerOnly(guard)) {
+    return NextResponse.json({ error: "Owner-only" }, { status: 403 });
   }
   return NextResponse.json(shareRepo.listForProject(params.id));
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const guard = await requireProjectAccess(params.id, "write");
+  const guard = await requireProjectAccess(params.id, "read");
   if (!guard.ok) return guard.error;
+  if (!ownerOnly(guard)) {
+    return NextResponse.json({ error: "Owner-only" }, { status: 403 });
+  }
 
-  const body = (await req.json().catch(() => null)) as { email?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { email?: unknown; role?: unknown } | null;
   if (!body || typeof body.email !== "string" || !body.email.trim()) {
     return NextResponse.json({ error: "Missing or invalid field: email" }, { status: 400 });
+  }
+  const role = parseRole(body.role);
+  if (!role) {
+    return NextResponse.json({ error: "Invalid role" }, { status: 400 });
   }
   const email = body.email.trim().toLowerCase();
   const target = userRepo.findByEmail(email);
@@ -27,8 +45,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (target.id === guard.project.userId) {
     return NextResponse.json({ error: "Owner is already implicit" }, { status: 400 });
   }
-  // idempotent — if exists, return 200 with the existing share
-  shareRepo.add(params.id, target.id, "reader");
+  const added = shareRepo.add(params.id, target.id, role);
+  if (!added) {
+    shareRepo.updateRole(params.id, target.id, role);
+  }
+  auditRepo.log({
+    projectId: params.id,
+    userId: guard.userId,
+    action: added ? "share.add" : "share.role_change",
+    details: { targetUserId: target.id, role },
+  });
   const list = shareRepo.listForProject(params.id);
   const found = list.find((s) => s.userId === target.id);
   return NextResponse.json(found, { status: 200 });

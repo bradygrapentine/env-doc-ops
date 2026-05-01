@@ -13,13 +13,13 @@ describe("AccountPage", () => {
 
   it("redirects when no session", async () => {
     (getSessionUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
-    await expect(AccountPage()).rejects.toThrow(/NEXT_REDIRECT:\/signin/);
+    await expect(AccountPage({})).rejects.toThrow(/NEXT_REDIRECT:\/signin/);
   });
 
   it("redirects when user not found", async () => {
     (getSessionUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce("u1");
     (userRepo.findById as ReturnType<typeof vi.fn>).mockReturnValueOnce(null);
-    await expect(AccountPage()).rejects.toThrow(/NEXT_REDIRECT:\/signin/);
+    await expect(AccountPage({})).rejects.toThrow(/NEXT_REDIRECT:\/signin/);
   });
 
   it("renders user fields when authenticated", async () => {
@@ -30,7 +30,7 @@ describe("AccountPage", () => {
       name: "Brady",
       emailVerifiedAt: null,
     });
-    const tree = await AccountPage();
+    const tree = await AccountPage({});
     const s = JSON.stringify(tree);
     expect(s).toContain("Brady");
     expect(s).toContain("u@x.com");

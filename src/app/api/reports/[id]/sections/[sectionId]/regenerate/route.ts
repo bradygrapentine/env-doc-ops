@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { reportRepo, trafficRepo } from "@/lib/db";
+import { auditRepo, reportRepo, trafficRepo } from "@/lib/db";
 import { generateReportSections } from "@/lib/reportGenerator";
 import { requireOwnedReport } from "@/lib/session";
 
@@ -31,5 +31,11 @@ export async function POST(
     machineBaseline: match.machineBaseline,
   });
   if (!updated) return NextResponse.json({ error: "Report not found" }, { status: 404 });
+  auditRepo.log({
+    projectId: project.id,
+    userId: guard.userId,
+    action: "section.regenerate",
+    details: { sectionId: params.sectionId },
+  });
   return NextResponse.json(updated);
 }

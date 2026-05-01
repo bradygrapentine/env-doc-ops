@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { reportRepo } from "@/lib/db";
+import { auditRepo, reportRepo } from "@/lib/db";
 import { requireOwnedReport } from "@/lib/session";
 import type { SectionStatus } from "@/lib/types";
 
@@ -30,6 +30,12 @@ export async function PATCH(
 
   const updated = reportRepo.updateSection(params.id, params.sectionId, patch);
   if (!updated) return NextResponse.json({ error: "Report not found" }, { status: 404 });
+  auditRepo.log({
+    projectId: guard.project.id,
+    userId: guard.userId,
+    action: "section.update",
+    details: { sectionId: params.sectionId, fields: Object.keys(patch) },
+  });
   return NextResponse.json(updated);
 }
 
@@ -41,7 +47,15 @@ export async function DELETE(
   if (!guard.ok) return guard.error;
 
   const result = reportRepo.removeSection(params.id, params.sectionId);
-  if (result.ok) return new NextResponse(null, { status: 204 });
+  if (result.ok) {
+    auditRepo.log({
+      projectId: guard.project.id,
+      userId: guard.userId,
+      action: "section.delete",
+      details: { sectionId: params.sectionId },
+    });
+    return new NextResponse(null, { status: 204 });
+  }
   if (result.reason === "standard")
     return NextResponse.json({ error: "Cannot delete a standard section" }, { status: 400 });
   return NextResponse.json({ error: "Section not found" }, { status: 404 });

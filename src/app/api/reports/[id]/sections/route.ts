@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { reportRepo } from "@/lib/db";
+import { auditRepo, reportRepo } from "@/lib/db";
 import { requireOwnedReport } from "@/lib/session";
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -21,5 +21,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const section = reportRepo.addCustomSection(params.id, { title: titleRaw, content });
   if (!section) return NextResponse.json({ error: "Report not found" }, { status: 404 });
+  auditRepo.log({
+    projectId: guard.project.id,
+    userId: guard.userId,
+    action: "section.add",
+    details: { sectionId: section.id, title: section.title },
+  });
   return NextResponse.json(section);
 }

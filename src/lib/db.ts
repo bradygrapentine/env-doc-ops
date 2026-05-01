@@ -41,6 +41,24 @@ const SCHEMA_SQL = `
     usedAt TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS email_change_tokens (
+    token TEXT PRIMARY KEY,
+    userId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    newEmail TEXT NOT NULL,
+    expiresAt TEXT NOT NULL,
+    usedAt TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id TEXT PRIMARY KEY,
+    projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    userId TEXT REFERENCES users(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
+    details TEXT,
+    createdAt TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_audit_project ON audit_log(projectId, createdAt);
+
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     userId TEXT REFERENCES users(id) ON DELETE CASCADE,
@@ -78,7 +96,7 @@ const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS project_shares (
     projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     userId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role TEXT NOT NULL CHECK(role IN ('reader')),
+    role TEXT NOT NULL CHECK(role IN ('reader','editor')),
     createdAt TEXT NOT NULL,
     PRIMARY KEY (projectId, userId)
   );
@@ -134,6 +152,29 @@ function migrate(conn: Database.Database) {
   } catch (e) {
     const msg = (e as Error).message;
     if (!/duplicate column name/i.test(msg)) throw e;
+  }
+
+  // Widen project_shares.role CHECK to allow 'editor'. SQLite cannot ALTER a
+  // CHECK constraint, so when the old definition is detected we rebuild the
+  // table in place. Idempotent: skips if the definition already permits editor.
+  const sharesDef = conn
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'project_shares'")
+    .get() as { sql?: string } | undefined;
+  if (sharesDef?.sql && !sharesDef.sql.includes("'editor'")) {
+    conn.exec(`
+      CREATE TABLE project_shares__new (
+        projectId TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        userId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK(role IN ('reader','editor')),
+        createdAt TEXT NOT NULL,
+        PRIMARY KEY (projectId, userId)
+      );
+      INSERT INTO project_shares__new (projectId, userId, role, createdAt)
+        SELECT projectId, userId, role, createdAt FROM project_shares;
+      DROP TABLE project_shares;
+      ALTER TABLE project_shares__new RENAME TO project_shares;
+      CREATE INDEX IF NOT EXISTS idx_shares_user ON project_shares(userId);
+    `);
   }
 }
 
@@ -594,6 +635,16 @@ export const userRepo = {
       .run(now(), userId);
     return info.changes > 0;
   },
+  updateEmail(userId: string, newEmail: string): boolean {
+    const info = db()
+      .prepare("UPDATE users SET email = ?, emailVerifiedAt = ? WHERE id = ?")
+      .run(newEmail.toLowerCase(), now(), userId);
+    return info.changes > 0;
+  },
+  delete(userId: string): boolean {
+    const info = db().prepare("DELETE FROM users WHERE id = ?").run(userId);
+    return info.changes > 0;
+  },
 };
 
 export function _dbInternal(): Database.Database {
@@ -646,9 +697,74 @@ export const shareRepo = {
     if (!proj) return null;
     if (proj.userId === userId) return "owner";
     const share = conn
-      .prepare("SELECT 1 FROM project_shares WHERE projectId = ? AND userId = ?")
-      .get(projectId, userId);
-    return share ? "reader" : null;
+      .prepare("SELECT role FROM project_shares WHERE projectId = ? AND userId = ?")
+      .get(projectId, userId) as { role: ShareRole } | undefined;
+    if (!share) return null;
+    return share.role === "editor" ? "editor" : "reader";
+  },
+  updateRole(projectId: string, userId: string, role: ShareRole): boolean {
+    const info = db()
+      .prepare("UPDATE project_shares SET role = ? WHERE projectId = ? AND userId = ?")
+      .run(role, projectId, userId);
+    return info.changes > 0;
+  },
+};
+
+export type AuditAction =
+  | "project.update"
+  | "project.delete"
+  | "traffic.import"
+  | "report.generate"
+  | "report.regenerate"
+  | "section.update"
+  | "section.regenerate"
+  | "section.add"
+  | "section.delete"
+  | "section.reorder"
+  | "share.add"
+  | "share.remove"
+  | "share.role_change";
+
+export type AuditEntry = {
+  id: string;
+  projectId: string;
+  userId: string | null;
+  action: AuditAction;
+  details: string | null;
+  createdAt: string;
+  userEmail?: string | null;
+};
+
+export const auditRepo = {
+  log(entry: {
+    projectId: string;
+    userId: string | null;
+    action: AuditAction;
+    details?: Record<string, unknown> | string | null;
+  }): void {
+    const detailsStr =
+      entry.details == null
+        ? null
+        : typeof entry.details === "string"
+          ? entry.details
+          : JSON.stringify(entry.details);
+    db()
+      .prepare(
+        `INSERT INTO audit_log (id, projectId, userId, action, details, createdAt) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(uid(), entry.projectId, entry.userId, entry.action, detailsStr, now());
+  },
+  listForProject(projectId: string, limit = 100): AuditEntry[] {
+    return db()
+      .prepare(
+        `SELECT a.id, a.projectId, a.userId, a.action, a.details, a.createdAt, u.email AS userEmail
+         FROM audit_log a
+         LEFT JOIN users u ON u.id = a.userId
+         WHERE a.projectId = ?
+         ORDER BY a.createdAt DESC
+         LIMIT ?`,
+      )
+      .all(projectId, limit) as AuditEntry[];
   },
 };
 

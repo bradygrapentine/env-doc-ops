@@ -93,4 +93,52 @@ describe("TrafficRowsManager", () => {
     expect(global.fetch).not.toHaveBeenCalled();
     expect(screen.getByText("Main & 1st")).toBeInTheDocument();
   });
+
+  it("edits a row inline and PATCHes on save", async () => {
+    const user = userEvent.setup();
+    const updated = { ...ROW, intersection: "Edited" };
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      new Response(JSON.stringify(updated), { status: 200 }),
+    );
+    render(<TrafficRowsManager projectId="p1" initialRows={[ROW]} />);
+    await user.click(screen.getByRole("button", { name: /edit row/i }));
+    const intersectionInput = screen.getAllByDisplayValue("Main & 1st")[0] as HTMLInputElement;
+    await user.clear(intersectionInput);
+    await user.type(intersectionInput, "Edited");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    expect(global.fetch).toHaveBeenCalledWith(
+      `/api/projects/p1/traffic-data/rows/${ROW.id}`,
+      expect.objectContaining({ method: "PATCH" }),
+    );
+    expect(await screen.findByText("Edited")).toBeInTheDocument();
+  });
+
+  it("cancels edit without calling fetch", async () => {
+    const user = userEvent.setup();
+    render(<TrafficRowsManager projectId="p1" initialRows={[ROW]} />);
+    await user.click(screen.getByRole("button", { name: /edit row/i }));
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(screen.getByText("Main & 1st")).toBeInTheDocument();
+  });
+
+  it("surfaces save errors inline", async () => {
+    const user = userEvent.setup();
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "boom" }), { status: 400 }),
+    );
+    render(<TrafficRowsManager projectId="p1" initialRows={[ROW]} />);
+    await user.click(screen.getByRole("button", { name: /edit row/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    expect(await screen.findByText("boom")).toBeInTheDocument();
+  });
+
+  it("cancels add form without calling fetch", async () => {
+    const user = userEvent.setup();
+    render(<TrafficRowsManager projectId="p1" initialRows={[]} />);
+    await user.click(screen.getByRole("button", { name: /\+ add row/i }));
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(screen.queryByPlaceholderText(/intersection/i)).not.toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
 });

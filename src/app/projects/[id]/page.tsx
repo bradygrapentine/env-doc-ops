@@ -8,6 +8,7 @@ import DeleteButton from "./DeleteButton";
 import ManualInputsForm from "./ManualInputsForm";
 import TrafficRowsManager from "./TrafficRowsManager";
 import SharesPanel from "./SharesPanel";
+import AuditPanel from "./AuditPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +108,12 @@ export default async function ProjectPage({ params }: { params: { id: string } }
         {isOwner && (
           <div className="lg:col-span-2">
             <SharesPanel projectId={project.id} />
+          </div>
+        )}
+
+        {isOwner && (
+          <div className="lg:col-span-2">
+            <AuditPanel projectId={project.id} />
           </div>
         )}
       </div>

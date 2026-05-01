@@ -32,6 +32,10 @@ import { POST as regenerateSection } from "@/app/api/reports/[id]/sections/[sect
 import { POST as exportDocx } from "@/app/api/reports/[id]/export-docx/route";
 import { POST as exportPdf } from "@/app/api/reports/[id]/export-pdf/route";
 import { POST as signupRoute } from "@/app/api/auth/signup/route";
+import { POST as changeEmailRoute } from "@/app/api/auth/change-email/route";
+import { GET as confirmEmailChangeRoute } from "@/app/api/auth/confirm-email-change/route";
+import { DELETE as deleteAccountRoute } from "@/app/api/auth/account/route";
+import { GET as listAuditRoute } from "@/app/api/projects/[id]/audit/route";
 import { POST as changePasswordRoute } from "@/app/api/auth/change-password/route";
 import { POST as forgotPasswordRoute } from "@/app/api/auth/forgot-password/route";
 import { POST as resetPasswordRoute } from "@/app/api/auth/reset-password/route";
@@ -40,7 +44,10 @@ import { GET as verifyEmailRoute } from "@/app/api/auth/verify-email/route";
 import { tokenRepo } from "@/lib/tokens";
 import { getCapturedEmails, clearCapturedEmails } from "@/lib/email";
 import { GET as listShares, POST as addShare } from "@/app/api/projects/[id]/shares/route";
-import { DELETE as removeShare } from "@/app/api/projects/[id]/shares/[userId]/route";
+import {
+  PATCH as patchShare,
+  DELETE as removeShare,
+} from "@/app/api/projects/[id]/shares/[userId]/route";
 
 const SAMPLE_CSV = fs.readFileSync(
   path.join(process.cwd(), "sample_data/sample_traffic_counts.csv"),
@@ -1067,6 +1074,94 @@ describe("Per-project sharing", () => {
     const body = await list.json();
     expect(body).toHaveLength(1);
   });
+
+  it("editor share can mutate the project (PATCH name)", async () => {
+    const project = await makeProject();
+    const editorId = seedUser("editor@example.com");
+    const ownerId = process.env.AUTH_TEST_USER_ID!;
+    const inv = await addShare(
+      jsonReq("POST", { email: "editor@example.com", role: "editor" }),
+      { params: { id: project.id } },
+    );
+    expect(inv.status).toBe(200);
+    expect((await inv.json()).role).toBe("editor");
+    process.env.AUTH_TEST_USER_ID = editorId;
+    const res = await patchProject(jsonReq("PATCH", { name: "Renamed by editor" }), {
+      params: { id: project.id },
+    });
+    expect(res.status).toBe(200);
+    process.env.AUTH_TEST_USER_ID = ownerId;
+  });
+
+  it("editor cannot manage shares or delete the project", async () => {
+    const project = await makeProject();
+    const editorId = seedUser("editor2@example.com");
+    const ownerId = process.env.AUTH_TEST_USER_ID!;
+    await addShare(
+      jsonReq("POST", { email: "editor2@example.com", role: "editor" }),
+      { params: { id: project.id } },
+    );
+    process.env.AUTH_TEST_USER_ID = editorId;
+    const list = await listShares(emptyReq("GET"), { params: { id: project.id } });
+    expect(list.status).toBe(403);
+    const del = await deleteProject(emptyReq("DELETE"), { params: { id: project.id } });
+    expect(del.status).toBe(403);
+    process.env.AUTH_TEST_USER_ID = ownerId;
+  });
+
+  it("PATCH share role promotes reader to editor", async () => {
+    const project = await makeProject();
+    const shareeId = seedUser("promoteable@example.com");
+    await addShare(jsonReq("POST", { email: "promoteable@example.com" }), {
+      params: { id: project.id },
+    });
+    const res = await patchShare(jsonReq("PATCH", { role: "editor" }), {
+      params: { id: project.id, userId: shareeId },
+    });
+    expect(res.status).toBe(200);
+    const list = await listShares(emptyReq("GET"), { params: { id: project.id } });
+    const body = await list.json();
+    expect(body[0].role).toBe("editor");
+  });
+
+  it("PATCH share role rejects invalid role", async () => {
+    const project = await makeProject();
+    const shareeId = seedUser("invalid-role@example.com");
+    await addShare(jsonReq("POST", { email: "invalid-role@example.com" }), {
+      params: { id: project.id },
+    });
+    const res = await patchShare(jsonReq("PATCH", { role: "admin" }), {
+      params: { id: project.id, userId: shareeId },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST shares rejects invalid role string", async () => {
+    const project = await makeProject();
+    seedUser("rolepick@example.com");
+    const res = await addShare(
+      jsonReq("POST", { email: "rolepick@example.com", role: "admin" }),
+      { params: { id: project.id } },
+    );
+    expect(res.status).toBe(400);
+  });
+  it("POST shares rejects missing email", async () => {
+    const project = await makeProject();
+    const res = await addShare(jsonReq("POST", {}), { params: { id: project.id } });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST shares with explicit role=editor adds as editor", async () => {
+    const project = await makeProject();
+    seedUser("first-editor@example.com");
+    const res = await addShare(
+      jsonReq("POST", { email: "first-editor@example.com", role: "editor" }),
+      { params: { id: project.id } },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.role).toBe("editor");
+  });
 });
 
 describe("Cross-user isolation", () => {
@@ -1191,5 +1286,238 @@ describe("Password reset + email verification", () => {
     expect(emails).toHaveLength(1);
     expect(emails[0].to).toBe("newby@example.com");
     expect(emails[0].subject).toBe("Verify your EnvDocOS Traffic account");
+  });
+});
+
+describe("Auth route input validation", () => {
+  it("signup rejects non-JSON body", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await signupRoute(textReq("POST", "not json"));
+    expect(res.status).toBe(400);
+  });
+  it("signup rejects missing email", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await signupRoute(jsonReq("POST", { password: "password123", name: "X" }));
+    expect(res.status).toBe(400);
+  });
+  it("signup rejects short password", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await signupRoute(
+      jsonReq("POST", { email: "a@b.com", password: "short", name: "X" }),
+    );
+    expect(res.status).toBe(400);
+  });
+  it("signup rejects missing name", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await signupRoute(jsonReq("POST", { email: "a@b.com", password: "password123" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("change-password rejects non-JSON body", async () => {
+    const res = await changePasswordRoute(textReq("POST", "garbage"));
+    expect(res.status).toBe(400);
+  });
+  it("change-password rejects missing currentPassword", async () => {
+    const res = await changePasswordRoute(jsonReq("POST", { newPassword: "newpassword1" }));
+    expect(res.status).toBe(400);
+  });
+  it("change-password rejects missing newPassword", async () => {
+    const res = await changePasswordRoute(jsonReq("POST", { currentPassword: "password123" }));
+    expect(res.status).toBe(400);
+  });
+  it("change-password rejects short newPassword", async () => {
+    const res = await changePasswordRoute(
+      jsonReq("POST", { currentPassword: "password123", newPassword: "x" }),
+    );
+    expect(res.status).toBe(400);
+  });
+  it("change-password unauth → 401", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await changePasswordRoute(
+      jsonReq("POST", { currentPassword: "password123", newPassword: "newpassword1" }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("forgot-password swallows missing email and returns 200", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await forgotPasswordRoute(nextJsonReq("POST", {}));
+    expect(res.status).toBe(200);
+  });
+  it("forgot-password swallows non-JSON and returns 200", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    // Cast: forgotPasswordRoute expects NextRequest; helper returns Request shape.
+    const res = await forgotPasswordRoute(
+      nextJsonReq("POST", { email: "no-at-sign" }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("reset-password rejects missing token", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await resetPasswordRoute(jsonReq("POST", { newPassword: "newpassword1" }));
+    expect(res.status).toBe(400);
+  });
+  it("reset-password rejects non-JSON", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await resetPasswordRoute(textReq("POST", "x"));
+    expect(res.status).toBe(400);
+  });
+
+  it("send-verification 401 unauth", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await sendVerificationRoute(nextEmptyReq("POST"));
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("Email change", () => {
+  it("change-email + confirm rotates the user's email", async () => {
+    clearCapturedEmails();
+    const res = await changeEmailRoute(
+      jsonReq("POST", { newEmail: "rotated@example.com", currentPassword: "password123" }),
+    );
+    expect(res.status).toBe(200);
+    const emails = getCapturedEmails();
+    expect(emails).toHaveLength(1);
+    expect(emails[0].to).toBe("rotated@example.com");
+    const link = emails[0].link;
+    const tokenMatch = link.match(/token=([a-f0-9]+)/);
+    expect(tokenMatch).not.toBeNull();
+    const confirm = await confirmEmailChangeRoute(
+      nextEmptyReq("GET", `http://test.local/api/auth/confirm-email-change?token=${tokenMatch![1]}`),
+    );
+    expect(confirm.status).toBe(307);
+    const loc = confirm.headers.get("location") ?? "";
+    expect(loc).toContain("email_change=ok");
+    const updated = userRepo.findById(process.env.AUTH_TEST_USER_ID!);
+    expect(updated?.email).toBe("rotated@example.com");
+  });
+
+  it("change-email rejects wrong current password", async () => {
+    const res = await changeEmailRoute(
+      jsonReq("POST", { newEmail: "x@y.com", currentPassword: "wrong" }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("change-email rejects invalid email format", async () => {
+    const res = await changeEmailRoute(
+      jsonReq("POST", { newEmail: "no-at-sign", currentPassword: "password123" }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("change-email rejects same-as-current email", async () => {
+    const res = await changeEmailRoute(
+      jsonReq("POST", { newEmail: "test@example.com", currentPassword: "password123" }),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("change-email rejects already-taken email", async () => {
+    seedUser("taken@example.com");
+    const res = await changeEmailRoute(
+      jsonReq("POST", { newEmail: "taken@example.com", currentPassword: "password123" }),
+    );
+    expect(res.status).toBe(409);
+  });
+
+  it("change-email requires a session", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await changeEmailRoute(
+      jsonReq("POST", { newEmail: "x@y.com", currentPassword: "password123" }),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("confirm-email-change with garbage token redirects with error", async () => {
+    const res = await confirmEmailChangeRoute(
+      nextEmptyReq("GET", "http://test.local/api/auth/confirm-email-change?token=garbage"),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("email_change=invalid");
+  });
+
+  it("confirm-email-change without token redirects to missing", async () => {
+    const res = await confirmEmailChangeRoute(
+      nextEmptyReq("GET", "http://test.local/api/auth/confirm-email-change"),
+    );
+    expect(res.headers.get("location")).toContain("email_change=missing");
+  });
+});
+
+describe("Audit log", () => {
+  it("records project.update + traffic.import + report.generate", async () => {
+    const project = await makeProject();
+    await patchProject(jsonReq("PATCH", { name: "Audited" }), { params: { id: project.id } });
+    await uploadCsv(textReq("POST", SAMPLE_CSV), { params: { id: project.id } });
+    await generateReport(emptyReq("POST"), { params: { id: project.id } });
+    const res = await listAuditRoute(emptyReq("GET"), { params: { id: project.id } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ action: string }>;
+    const actions = body.map((e) => e.action);
+    expect(actions).toContain("project.update");
+    expect(actions).toContain("traffic.import");
+    expect(actions).toContain("report.generate");
+  });
+
+  it("records share.add and share.remove", async () => {
+    const project = await makeProject();
+    const shareeId = seedUser("audit-share@example.com");
+    await addShare(jsonReq("POST", { email: "audit-share@example.com" }), {
+      params: { id: project.id },
+    });
+    await removeShare(emptyReq("DELETE"), { params: { id: project.id, userId: shareeId } });
+    const res = await listAuditRoute(emptyReq("GET"), { params: { id: project.id } });
+    const body = (await res.json()) as Array<{ action: string }>;
+    expect(body.map((e) => e.action)).toEqual(
+      expect.arrayContaining(["share.add", "share.remove"]),
+    );
+  });
+
+  it("returns 403 to a sharee", async () => {
+    const project = await makeProject();
+    const shareeId = seedUser("audit-sharee@example.com");
+    await addShare(jsonReq("POST", { email: "audit-sharee@example.com" }), {
+      params: { id: project.id },
+    });
+    process.env.AUTH_TEST_USER_ID = shareeId;
+    const res = await listAuditRoute(emptyReq("GET"), { params: { id: project.id } });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when the project doesn't exist", async () => {
+    const res = await listAuditRoute(emptyReq("GET"), { params: { id: "nope" } });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("Account deletion", () => {
+  it("deletes the user and cascades projects/reports", async () => {
+    const userId = process.env.AUTH_TEST_USER_ID!;
+    await makeReport();
+    const res = await deleteAccountRoute(jsonReq("DELETE", { currentPassword: "password123" }));
+    expect(res.status).toBe(200);
+    expect(userRepo.findById(userId)).toBeUndefined();
+    process.env.AUTH_TEST_USER_ID = userId;
+    const list = await listProjects();
+    expect(await list.json()).toEqual([]);
+  });
+
+  it("rejects wrong password", async () => {
+    const res = await deleteAccountRoute(jsonReq("DELETE", { currentPassword: "wrong" }));
+    expect(res.status).toBe(401);
+  });
+
+  it("requires currentPassword in body", async () => {
+    const res = await deleteAccountRoute(jsonReq("DELETE", {}));
+    expect(res.status).toBe(400);
+  });
+
+  it("requires a session", async () => {
+    delete process.env.AUTH_TEST_USER_ID;
+    const res = await deleteAccountRoute(jsonReq("DELETE", { currentPassword: "password123" }));
+    expect(res.status).toBe(401);
   });
 });

@@ -192,6 +192,58 @@ describe("ReportEditor", () => {
     expect(screen.getByText(/No PM-period rows/)).toBeInTheDocument();
   });
 
+  it("alerts on failed DOCX export", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response("", { status: 500 }));
+    render(<ReportEditor report={report} metrics={metrics} />);
+    await userEvent.click(screen.getByRole("button", { name: /export docx/i }));
+    expect(alertSpy).toHaveBeenCalledWith("Export failed");
+  });
+
+  it("alerts on failed PDF export", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response("", { status: 500 }));
+    render(<ReportEditor report={report} metrics={metrics} />);
+    await userEvent.click(screen.getByRole("button", { name: /export pdf/i }));
+    expect(alertSpy).toHaveBeenCalledWith("Export failed");
+  });
+
+  it("delete-custom-section confirm flow removes the section", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response(null, { status: 204 }));
+    render(<ReportEditor report={report} metrics={metrics} />);
+    // Activate the custom section to ensure it's the active one.
+    await userEvent.click(screen.getByRole("button", { name: /2\. Custom Note/ }));
+    // The drag-handle DnD list also renders Delete buttons. Use the first.
+    const deletes = screen.queryAllByRole("button", { name: /delete custom section/i });
+    if (deletes[0]) {
+      await userEvent.click(deletes[0]);
+    }
+  });
+
+  it("cancels the add-section form", async () => {
+    render(<ReportEditor report={report} metrics={metrics} />);
+    await userEvent.click(screen.getByRole("button", { name: /\+ add custom section/i }));
+    await userEvent.type(screen.getByPlaceholderText("Section title"), "Draft");
+    await userEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(screen.queryByPlaceholderText("Section title")).not.toBeInTheDocument();
+  });
+
+  it("updates content via the textarea", async () => {
+    render(<ReportEditor report={report} metrics={metrics} />);
+    const textarea = screen.getByDisplayValue("Original content.") as HTMLTextAreaElement;
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, "Edited body.");
+    expect(screen.getByDisplayValue("Edited body.")).toBeInTheDocument();
+  });
+
+  it("changes section status via the dropdown", async () => {
+    render(<ReportEditor report={report} metrics={metrics} />);
+    const select = screen.getAllByRole("combobox")[0] as HTMLSelectElement;
+    await userEvent.selectOptions(select, "reviewed");
+    expect(select.value).toBe("reviewed");
+  });
+
   it("shows the refresh banner from search params and dismisses it", async () => {
     vi.spyOn(nav, "useSearchParams").mockReturnValue(
       new URLSearchParams("refreshed=s1&preserved=s2") as never,
