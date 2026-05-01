@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import bcrypt from "bcryptjs";
@@ -1379,8 +1379,10 @@ describe("Email change", () => {
     );
     expect(res.status).toBe(200);
     const emails = getCapturedEmails();
-    expect(emails).toHaveLength(1);
+    // Two emails: confirmation to the new address, notification to the old.
+    expect(emails).toHaveLength(2);
     expect(emails[0].to).toBe("rotated@example.com");
+    expect(emails[1].to).toBe("test@example.com");
     const link = emails[0].link;
     // Link points to the UI confirmation PAGE, not the API route — the page
     // is what fires the consuming POST after the user clicks Confirm.
@@ -1394,6 +1396,58 @@ describe("Email change", () => {
     expect(body.ok).toBe(true);
     const updated = userRepo.findById(process.env.AUTH_TEST_USER_ID!);
     expect(updated?.email).toBe("rotated@example.com");
+  });
+
+  it("change-email also notifies the OLD address with a 'wasn't me' CTA, no new-email plaintext", async () => {
+    clearCapturedEmails();
+    const newEmail = "moving-to@example.com";
+    const res = await changeEmailRoute(
+      jsonReq("POST", { newEmail, currentPassword: "password123" }),
+    );
+    expect(res.status).toBe(200);
+    const emails = getCapturedEmails();
+    expect(emails).toHaveLength(2);
+
+    const toNew = emails.find((e) => e.to === newEmail);
+    const toOld = emails.find((e) => e.to === "test@example.com");
+    expect(toNew).toBeDefined();
+    expect(toOld).toBeDefined();
+
+    // Old-address email must NOT contain the new email anywhere — neither the
+    // body, the subject, nor the link. Leaking the destination address to a
+    // compromised old account tells an attacker where the user is moving.
+    expect(toOld!.body).not.toContain(newEmail);
+    expect(toOld!.subject).not.toContain(newEmail);
+    expect(toOld!.link).not.toContain(newEmail);
+
+    // And it must NOT link to the confirm-email-change page (that's the new
+    // address's responsibility). Link should drive the user toward securing
+    // the account — i.e. /account or the password-reset flow.
+    expect(toOld!.link).not.toContain("/account/confirm-email-change");
+    expect(toOld!.link).toMatch(/\/account(\b|$|\?|#|\/)/);
+
+    // Body should carry "wasn't me" / change-password language as the CTA.
+    expect(toOld!.body.toLowerCase()).toMatch(/wasn'?t you|wasn'?t me|change your password/);
+  });
+
+  it("change-email succeeds even if the old-address notification send throws", async () => {
+    clearCapturedEmails();
+    const emailMod = await import("@/lib/email");
+    const spy = vi
+      .spyOn(emailMod, "sendEmailChangeNotification")
+      .mockRejectedValue(new Error("simulated SMTP failure"));
+    try {
+      const res = await changeEmailRoute(
+        jsonReq("POST", { newEmail: "soft-fail@example.com", currentPassword: "password123" }),
+      );
+      expect(res.status).toBe(200);
+      const emails = getCapturedEmails();
+      // Primary confirmation still landed.
+      expect(emails.some((e) => e.to === "soft-fail@example.com")).toBe(true);
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("peek GET returns the new email without consuming the token", async () => {
