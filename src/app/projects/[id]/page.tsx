@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { projectRepo, trafficRepo } from "@/lib/db";
 import { calculateMetrics } from "@/lib/reportGenerator";
 import UploadCsv from "./UploadCsv";
+import DeleteButton from "./DeleteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,16 @@ export default function ProjectPage({ params }: { params: { id: string } }) {
     <div>
       <div className="mb-6">
         <Link href="/" className="text-sm text-gray-500 hover:underline">← Projects</Link>
-        <h1 className="text-2xl font-semibold mt-2">{project.name}</h1>
+        <div className="flex items-center gap-3 mt-2">
+          <h1 className="text-2xl font-semibold">{project.name}</h1>
+          <Link
+            href={`/projects/${project.id}/edit`}
+            className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
+          >
+            Edit
+          </Link>
+          <DeleteButton projectId={project.id} projectName={project.name} />
+        </div>
         <div className="text-sm text-gray-500">{project.location} · {project.jurisdiction}</div>
       </div>
 

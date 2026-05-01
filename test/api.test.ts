@@ -5,7 +5,7 @@ import { resetDb } from "./db";
 import { jsonReq, textReq, emptyReq } from "./routes";
 
 import { POST as createProject, GET as listProjects } from "@/app/api/projects/route";
-import { GET as getProject } from "@/app/api/projects/[id]/route";
+import { GET as getProject, PATCH as patchProject, DELETE as deleteProject } from "@/app/api/projects/[id]/route";
 import { POST as uploadCsv } from "@/app/api/projects/[id]/traffic-data/route";
 import { POST as generateReport } from "@/app/api/projects/[id]/generate-report/route";
 import { POST as previewReport } from "@/app/api/projects/[id]/generate-report/preview/route";
@@ -84,6 +84,72 @@ describe("GET /api/projects/:id", () => {
 
   it("returns 404 for unknown id", async () => {
     const res = await getProject(emptyReq("GET"), { params: { id: "nope" } });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("PATCH /api/projects/:id", () => {
+  it("updates editable fields with a partial body", async () => {
+    const p = await makeProject();
+    const res = await patchProject(jsonReq("PATCH", { name: "Renamed", location: "New City" }), {
+      params: { id: p.id },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.name).toBe("Renamed");
+    expect(body.location).toBe("New City");
+    expect(body.jurisdiction).toBe(p.jurisdiction);
+
+    const get = await getProject(emptyReq("GET"), { params: { id: p.id } });
+    const fresh = await get.json();
+    expect(fresh.name).toBe("Renamed");
+    expect(fresh.location).toBe("New City");
+  });
+
+  it("returns 400 on empty body", async () => {
+    const p = await makeProject();
+    const res = await patchProject(jsonReq("PATCH", {}), { params: { id: p.id } });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 for unknown id", async () => {
+    const res = await patchProject(jsonReq("PATCH", { name: "X" }), { params: { id: "nope" } });
+    expect(res.status).toBe(404);
+  });
+
+  it("ignores attempts to change id or createdAt", async () => {
+    const p = await makeProject();
+    const res = await patchProject(
+      jsonReq("PATCH", { id: "hacked", createdAt: "2000-01-01T00:00:00Z", name: "New Name" }),
+      { params: { id: p.id } },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.id).toBe(p.id);
+    expect(body.createdAt).toBe(p.createdAt);
+    expect(body.name).toBe("New Name");
+  });
+});
+
+describe("DELETE /api/projects/:id", () => {
+  it("deletes an existing project (204) and subsequent GET is 404", async () => {
+    const p = await makeProject();
+    const res = await deleteProject(emptyReq("DELETE"), { params: { id: p.id } });
+    expect(res.status).toBe(204);
+    const get = await getProject(emptyReq("GET"), { params: { id: p.id } });
+    expect(get.status).toBe(404);
+  });
+
+  it("cascades to reports", async () => {
+    const { project, reportId } = await makeReport();
+    const del = await deleteProject(emptyReq("DELETE"), { params: { id: project.id } });
+    expect(del.status).toBe(204);
+    const reportRes = await getReport(emptyReq("GET"), { params: { id: reportId } });
+    expect(reportRes.status).toBe(404);
+  });
+
+  it("returns 404 for unknown id", async () => {
+    const res = await deleteProject(emptyReq("DELETE"), { params: { id: "nope" } });
     expect(res.status).toBe(404);
   });
 });
