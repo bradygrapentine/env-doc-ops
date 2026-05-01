@@ -17,16 +17,13 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 | Ready       | 3     |
 | In progress | 0     |
 | Blocked     | 0     |
-| Shipped     | 13    |
+| Shipped     | 16    |
 
 ---
 
 ## §1 Ready
 
 ### Report quality (the actual deliverable)
-
-- **B-013 — Per-section regenerate** · P2 · S
-  Button on the editor: "Regenerate this section from latest data" — re-runs the template for one section without touching others. Composes with B-011.
 
 - **B-014 — Section reorder + add/remove custom sections** · P2 · M
   Drag-to-reorder and add a freeform "Custom" section. Schema already has `order`.
@@ -38,16 +35,13 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 - **B-031 — Direct row entry / inline edit of count rows** · P2 · M
   Some firms don't have a CSV — let them paste a small set of counts. Expand `traffic_counts` writes beyond the bulk replace path.
 
-- **B-032b — Wire growthRate + mitigationNotes into report templates** · P1 · S
-  Followup from B-032: those two `manualInputs` fields are stored but not yet threaded into `impact-analysis` and `mitigation` section templates. TODO comment is in `src/lib/reportGenerator.ts`.
-
 ### Auth & multi-user
 
 - **B-041 — Per-project sharing** · P2 · L
   Invite a collaborator by email; read or read+write. Depends on B-040.
 
-- **B-042 — Account management (password reset, email verification)** · P1 · M
-  Followup from B-040: forgot-password flow, email verification, change-password. Requires SMTP/Resend.
+- **B-042b — Password reset + email verification** · P1 · M
+  Remainder of B-042 once SMTP/Resend is wired in: forgot-password flow with email link, email verification on signup, email change. Change-password (no-email) already shipped under B-042.
 
 ---
 
@@ -65,6 +59,15 @@ If a stakeholder pushes for any of these, see `envdocos_traffic_v1_package_full/
 ---
 
 ## §3 Shipped
+
+- **B-013 — Per-section regenerate** · `56b6e93` · 2026-04-30
+  New `POST /api/reports/:id/sections/:sectionId/regenerate` that re-runs the template for one section, resets status to draft, and bumps `machineBaseline`. Editor button next to "Save section" with a confirm dialog.
+
+- **B-032b — Wire growthRate + mitigationNotes into templates** · `047bb97` · 2026-04-30
+  `growthRate` appends a sentence to impact-analysis; `mitigationNotes` appends an "Engineer notes" paragraph to mitigation. Empty values leave canned text unchanged.
+
+- **B-042 (partial) — In-app change password** · `ca16f4d` · 2026-04-30
+  `POST /api/auth/change-password` verifies current password via bcrypt and rotates to a new one (≥8 chars). New `/account` page with read-only profile + change-password form. Header has Account link for signed-in users. Password reset / email verification deferred to B-042b (needs SMTP).
 
 - **B-040 — Real auth (email + password)** · 2026-04-30
   Auth.js v5 with Credentials provider + bcryptjs. New `users` table, `projects.userId` column, middleware redirects unauth pages and 401s API routes. Signup adopts pre-existing orphan projects on first user. Cross-user isolation enforced (404 on others' projects). Test backdoor via `AUTH_TEST_USER_ID` env (NODE_ENV=test only).
