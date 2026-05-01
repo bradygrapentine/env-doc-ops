@@ -14,10 +14,10 @@ Effort: rough t-shirt — `S` ≤ 1 day, `M` ≤ 3 days, `L` 1+ week.
 
 | State       | Count |
 | ----------- | ----- |
-| Ready       | 3     |
+| Ready       | 1     |
 | In progress | 0     |
 | Blocked     | 0     |
-| Shipped     | 25    |
+| Shipped     | 27    |
 
 Last `/backlog-sync`: 2026-05-01
 
@@ -29,8 +29,7 @@ Last `/backlog-sync`: 2026-05-01
 
 - **B-053 — Move rate limiter to a shared store before horizontal scale-out** · The B-050 limiter is per-Node-process (in-memory Map). On any multi-worker deploy (PM2 cluster, multiple containers, Vercel lambdas, Node `cluster`) an attacker round-robined across N workers gets N × 5 attempts per window. Swap `rate-limit.ts` for a Redis/Upstash-backed implementation behind the same `consume`/`resetSucceeded` API; `rate-limit-policy.ts` is the single point of change. Track this as **blocking before any non-single-process deploy.**
 
-- **B-051 — Replace GET-confirm on email-change with a confirmation page** · Mail clients / corporate URL scanners that prefetch links currently burn the single-use email-change token before the user clicks. Switch to a page that shows "Confirm new email = X?" with a POST button. Same pattern is worth applying to verification email links eventually.
-- **B-052 — Audit-log details retention on account delete** · `audit_log.userId` is set to NULL on user delete, but the `details` JSON column still contains the deleted user's UUID (and any email logged before account-delete). For GDPR-style erasure we need to scrub or hash these fields when the referenced user is deleted.
+<!-- B-051, B-052 shipped — see §3 Shipped -->
 
 Followups noted during execution (low priority polish):
 
@@ -58,6 +57,12 @@ If a stakeholder pushes for any of these, see `envdocos_traffic_v1_package_full/
 ---
 
 ## §3 Shipped
+
+- **B-052 — Audit-log GDPR scrub on account delete** · 2026-05-01
+  `auditRepo.scrubUser(userId)` rewrites every `audit_log.details` JSON value that equals the deleted user's UUID to the literal `"[scrubbed]"`. Wired into `userRepo.delete()` inside a `db().transaction(...)` so scrub fires before the FK SET NULL cascade. Idempotent. 5 new API tests covering actor scrub, no-over-scrub, target-of-share scrub, idempotency, and end-to-end DELETE /api/auth/account.
+
+- **B-051 — Email-change confirm uses POST-on-page-click** · 2026-05-01
+  Split `/api/auth/confirm-email-change` into a non-consuming GET (peek → `{newEmail}` for valid tokens, 404 for invalid/expired/used) and a consuming POST (rotates email). Confirmation link now points at the new UI page `/account/confirm-email-change?token=…`, which reads the new email via peek, shows Confirm + Cancel, and POSTs on click. Mail-client / corporate URL prefetchers can now hit the link without burning the token. 4 new API tests + 6 component tests.
 
 - **B-050 — Rate-limit password-bearing endpoints** · 2026-05-01
   Fixed-window in-memory rate limiter (`src/lib/rate-limit.ts`) keyed by `(userId, action)`. Policy helper (`src/lib/rate-limit-policy.ts`) wraps it with the password-endpoint default (5 attempts / 15 min) and emits 429 with `Retry-After`. Wired into `change-password`, `change-email`, `account` DELETE — gate runs BEFORE bcrypt so the bcrypt cost itself is what gets throttled. 429 returned unconditionally while blocked, even on a correct password, so an attacker mid-block can't probe the status code to identify the right credential. Buckets cleared on successful password verification so legitimate users aren't locked out for typos. 12 new API tests + 6 unit tests on the limiter.
