@@ -5,7 +5,7 @@ import { getSessionUserId } from "@/lib/session";
 export async function GET() {
   const userId = await getSessionUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  return NextResponse.json(projectRepo.listAccessible(userId));
+  return NextResponse.json(await projectRepo.listAccessible(userId));
 }
 
 export async function POST(req: Request) {
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const project = projectRepo.create({
+  const project = await projectRepo.create({
     userId,
     name: body.name,
     location: body.location,

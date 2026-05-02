@@ -4,7 +4,7 @@ import { tokenRepo } from "@/lib/tokens";
 
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token") ?? "";
-  const result = tokenRepo.consumeVerification(token);
+  const result = await tokenRepo.consumeVerification(token);
   const target = req.nextUrl.clone();
   target.pathname = "/account";
   target.search = "";
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(target);
   }
 
-  userRepo.markEmailVerified(result.userId);
+  await userRepo.markEmailVerified(result.userId);
   target.searchParams.set("verified", "1");
   return NextResponse.redirect(target);
 }

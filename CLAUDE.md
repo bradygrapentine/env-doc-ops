@@ -23,15 +23,15 @@ EnvDocOS Traffic is a **report compiler**, not traffic engineering software. Per
 ## Architecture
 
 - **Routes (App Router):** auth surface under `src/app/api/auth/*`; project surface under `src/app/api/projects/[id]/*`; reports under `src/app/api/reports/[id]/*`. UI under `src/app/{,projects/,reports/,account/,signin/,signup/,…}`.
-- **DB (`src/lib/db.ts`):** lazy better-sqlite3 singleton. Tables: `users`, `verification_tokens`, `password_reset_tokens`, `email_change_tokens`, `projects`, `traffic_counts`, `reports`, `report_sections`, `project_shares`, `audit_log`. Repos exported per concern (`projectRepo`, `reportRepo`, `userRepo`, `tokenRepo`, `shareRepo`, `auditRepo`). Migrations are idempotent ALTER-TABLE blocks gated on duplicate-column errors; the `project_shares.role` widen-to-editor migration recreates the table in place.
-- **Auth (`src/auth.ts`, `src/auth.config.ts`, `src/middleware.ts`):** Auth.js v5 with Credentials + bcryptjs. Edge-safe config split out so middleware doesn't pull in `bcryptjs`/`better-sqlite3`. Test backdoor: `AUTH_TEST_USER_ID` env var honored only when `NODE_ENV=test`.
+- **DB (`src/lib/db.ts`):** lazy `postgres` (Porsager) singleton. All repo methods are `async`. Tables: `users`, `verification_tokens`, `password_reset_tokens`, `email_change_tokens`, `projects`, `traffic_counts`, `reports`, `report_sections`, `project_shares`, `audit_log`. Repos exported per concern (`projectRepo`, `reportRepo`, `userRepo`, `tokenRepo`, `shareRepo`, `auditRepo`). Migrations live in `src/lib/migrations/*.sql`, applied by `src/lib/migrate.ts` (tracked via `schema_migrations` table) — invoked from `scripts/migrate.mjs` as a `prestart` hook before `next start`. Local dev: `docker compose up -d` (Postgres on :5434). Tests: per-process schema (`test_<pid>_<rand>`) created in `test/env.ts` `beforeAll`, dropped in `afterAll`, all calls scoped via `search_path`. Prod: Neon (see `docs/adr/0002-postgres-vendor.md`).
+- **Auth (`src/auth.ts`, `src/auth.config.ts`, `src/middleware.ts`):** Auth.js v5 with Credentials + bcryptjs. Edge-safe config split out so middleware doesn't pull in `bcryptjs`/`postgres`. Test backdoor: `AUTH_TEST_USER_ID` env var honored only when `NODE_ENV=test`.
 - **Access guards (`src/lib/session.ts`):** discriminated-union `Guard<T>`. `requireProjectAccess(id, "read"|"write")` returns 401/404/403 as appropriate; editors satisfy `write`, readers don't. Owner-only operations (delete, share management) check `guard.role !== "owner"` after a `read` guard.
 - **Email (`src/lib/email.ts`):** Resend wrapper with an `EMAIL_SINK=memory` mode for tests/E2E. Tests assert against `getCapturedEmails()`; the test-only endpoint at `/api/test-only/emails` exposes the sink to Playwright.
 - **Audit:** `auditRepo.log({projectId, userId, action, details})` is called inline from mutation routes. Owner-only `GET /api/projects/:id/audit` exposes the feed.
 
 ## Stack
 
-Next.js 14 (App Router) + TypeScript + TailwindCSS, better-sqlite3, Auth.js v5 (`next-auth@beta`) + bcryptjs, PapaParse, `docx` + `pdfkit` for export, `@dnd-kit/sortable` for editor reorder, Resend for email. Vitest 4 with `test.projects` (node + jsdom). Playwright + chromium for E2E.
+Next.js 14 (App Router) + TypeScript + TailwindCSS, Postgres via `postgres` (Porsager), Auth.js v5 (`next-auth@beta`) + bcryptjs, PapaParse, `docx` + `pdfkit` for export, `@dnd-kit/sortable` for editor reorder, Resend for email. Vitest 4 with `test.projects` (node + jsdom). Playwright + chromium for E2E.
 
 ## CSV Schema
 

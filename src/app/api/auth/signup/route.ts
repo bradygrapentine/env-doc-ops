@@ -28,22 +28,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Name required" }, { status: 400 });
   }
 
-  if (userRepo.findByEmail(email)) {
+  if (await userRepo.findByEmail(email)) {
     return NextResponse.json({ error: "Account with that email already exists" }, { status: 409 });
   }
 
-  const isFirstUser = userRepo.count() === 0;
+  const isFirstUser = (await userRepo.count()) === 0;
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = userRepo.create({ email, passwordHash, name });
+  const user = await userRepo.create({ email, passwordHash, name });
 
   let claimed = 0;
   if (isFirstUser) {
-    claimed = userRepo.claimOrphanProjects(user.id);
+    claimed = await userRepo.claimOrphanProjects(user.id);
   }
 
   // Kick off verification email — failure must not block signup.
   try {
-    const { token } = tokenRepo.createVerification(user.id);
+    const { token } = await tokenRepo.createVerification(user.id);
     const link = `${emailLinkBase(req)}/api/auth/verify-email?token=${token}`;
     await sendVerificationEmail(user.email, link);
   } catch (err) {

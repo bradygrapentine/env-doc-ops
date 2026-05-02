@@ -17,14 +17,14 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "currentPassword required" }, { status: 400 });
   }
 
-  const user = userRepo.findById(userId);
+  const user = await userRepo.findById(userId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const full = userRepo.findByEmail(user.email);
+  const full = await userRepo.findByEmail(user.email);
   if (!full || !(await bcrypt.compare(currentPassword, full.passwordHash))) {
     return NextResponse.json({ error: "Current password is incorrect" }, { status: 401 });
   }
 
-  userRepo.delete(userId);
+  await userRepo.delete(userId);
   return NextResponse.json({ ok: true });
 }

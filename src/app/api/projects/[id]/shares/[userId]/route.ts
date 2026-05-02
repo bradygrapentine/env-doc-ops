@@ -18,9 +18,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string; us
   if (role !== "reader" && role !== "editor") {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
   }
-  const ok = shareRepo.updateRole(params.id, params.userId, role as ShareRole);
+  const ok = await shareRepo.updateRole(params.id, params.userId, role as ShareRole);
   if (!ok) return NextResponse.json({ error: "Share not found" }, { status: 404 });
-  auditRepo.log({
+  await auditRepo.log({
     projectId: params.id,
     userId: guard.userId,
     action: "share.role_change",
@@ -38,9 +38,9 @@ export async function DELETE(
   if (!ownerOnly(guard)) {
     return NextResponse.json({ error: "Owner-only" }, { status: 403 });
   }
-  const ok = shareRepo.remove(params.id, params.userId);
+  const ok = await shareRepo.remove(params.id, params.userId);
   if (!ok) return NextResponse.json({ error: "Share not found" }, { status: 404 });
-  auditRepo.log({
+  await auditRepo.log({
     projectId: params.id,
     userId: guard.userId,
     action: "share.remove",

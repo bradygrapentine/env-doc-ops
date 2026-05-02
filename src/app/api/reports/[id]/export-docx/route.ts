@@ -8,7 +8,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (!guard.ok) return guard.error;
   const { project, report } = guard;
 
-  const rows = trafficRepo.listByProject(report.projectId);
+  const rows = await trafficRepo.listByProject(report.projectId);
   const buf = await buildReportDocx(project, report, rows);
   return new NextResponse(new Uint8Array(buf), {
     headers: {

@@ -14,7 +14,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (!Array.isArray(orderedIds) || orderedIds.some((x) => typeof x !== "string"))
     return NextResponse.json({ error: "orderedIds must be an array of strings" }, { status: 400 });
 
-  const ok = reportRepo.reorderSections(params.id, orderedIds as string[]);
+  const ok = await reportRepo.reorderSections(params.id, orderedIds as string[]);
   if (!ok)
     return NextResponse.json(
       {
@@ -24,8 +24,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       { status: 400 },
     );
 
-  const updated = reportRepo.get(params.id);
-  auditRepo.log({
+  const updated = await reportRepo.get(params.id);
+  await auditRepo.log({
     projectId: guard.project.id,
     userId: guard.userId,
     action: "section.reorder",

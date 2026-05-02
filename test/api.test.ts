@@ -84,8 +84,8 @@ async function makeReport() {
   return { project, reportId: body.reportId as string, sections: body.sections };
 }
 
-function seedUser(email = "test@example.com"): string {
-  const u = userRepo.create({
+async function seedUser(email = "test@example.com"): Promise<string> {
+  const u = await userRepo.create({
     email,
     name: "Test User",
     passwordHash: bcrypt.hashSync("password123", 4),
@@ -93,11 +93,11 @@ function seedUser(email = "test@example.com"): string {
   return u.id;
 }
 
-beforeEach(() => {
-  resetDb();
+beforeEach(async () => {
+  await resetDb();
   clearCapturedEmails();
   _resetRateLimit();
-  process.env.AUTH_TEST_USER_ID = seedUser();
+  process.env.AUTH_TEST_USER_ID = await seedUser();
 });
 
 afterEach(() => {
@@ -274,7 +274,7 @@ describe("POST /api/projects/:id/traffic-data/rows", () => {
     expect(body.intersection).toBe("Main & 1st");
 
     const { trafficRepo } = await import("@/lib/db");
-    const list = trafficRepo.listByProject(p.id);
+    const list = await trafficRepo.listByProject(p.id);
     expect(list).toHaveLength(1);
     expect(list[0].id).toBe(body.id);
   });
@@ -294,7 +294,7 @@ describe("POST /api/projects/:id/traffic-data/rows", () => {
 
   it("returns 404 for a project owned by another user", async () => {
     const p = await makeProject();
-    const userBId = seedUser("rows-other@example.com");
+    const userBId = await seedUser("rows-other@example.com");
     process.env.AUTH_TEST_USER_ID = userBId;
     const res = await addRowRoute(jsonReq("POST", { row: validRow }), {
       params: { id: p.id },
@@ -337,7 +337,7 @@ describe("PATCH /api/projects/:id/traffic-data/rows/:rowId", () => {
     expect(cross.status).toBe(404);
 
     // Cross-user: 404 from project guard.
-    const userBId = seedUser("patch-other@example.com");
+    const userBId = await seedUser("patch-other@example.com");
     process.env.AUTH_TEST_USER_ID = userBId;
     const xuser = await patchRowRoute(jsonReq("PATCH", { inbound: 1 }), {
       params: { id: p.id, rowId: created.id },
@@ -560,7 +560,7 @@ describe("POST /api/reports/:id/sections/:sectionId/regenerate", () => {
     const { reportId, project } = await makeReport();
     // Wipe rows.
     const { trafficRepo } = await import("@/lib/db");
-    trafficRepo.replaceForProject(project.id, []);
+    await trafficRepo.replaceForProject(project.id, []);
     const res = await regenerateSection(emptyReq("POST"), {
       params: { id: reportId, sectionId: "executive-summary" },
     });
@@ -569,7 +569,7 @@ describe("POST /api/reports/:id/sections/:sectionId/regenerate", () => {
 
   it("returns 404 for cross-user report (no existence leak)", async () => {
     const { reportId } = await makeReport();
-    const userBId = seedUser("regen-b@example.com");
+    const userBId = await seedUser("regen-b@example.com");
     process.env.AUTH_TEST_USER_ID = userBId;
     const res = await regenerateSection(emptyReq("POST"), {
       params: { id: reportId, sectionId: "executive-summary" },
@@ -628,7 +628,7 @@ describe("POST /api/reports/:id/export-pdf", () => {
 describe("POST /api/auth/signup", () => {
   it("creates a user and returns id/email/name", async () => {
     delete process.env.AUTH_TEST_USER_ID;
-    resetDb();
+    await resetDb();
     const res = await signupRoute(
       jsonReq("POST", { email: "alice@example.com", password: "password123", name: "Alice" }),
     );
@@ -641,7 +641,7 @@ describe("POST /api/auth/signup", () => {
 
   it("rejects short passwords", async () => {
     delete process.env.AUTH_TEST_USER_ID;
-    resetDb();
+    await resetDb();
     const res = await signupRoute(
       jsonReq("POST", { email: "a@b.c", password: "short", name: "A" }),
     );
@@ -650,7 +650,7 @@ describe("POST /api/auth/signup", () => {
 
   it("rejects duplicate emails", async () => {
     delete process.env.AUTH_TEST_USER_ID;
-    resetDb();
+    await resetDb();
     const body = { email: "dup@example.com", password: "password123", name: "Dup" };
     const r1 = await signupRoute(jsonReq("POST", body));
     expect(r1.status).toBe(200);
@@ -660,10 +660,10 @@ describe("POST /api/auth/signup", () => {
 
   it("first user claims orphan projects", async () => {
     delete process.env.AUTH_TEST_USER_ID;
-    resetDb();
+    await resetDb();
     // Create an orphan project (userId=null) by going through repo directly.
     const { projectRepo } = await import("@/lib/db");
-    projectRepo.create({
+    await projectRepo.create({
       userId: null,
       name: "Legacy",
       location: "X",
@@ -688,8 +688,8 @@ describe("POST /api/auth/signup", () => {
 describe("POST /api/auth/change-password", () => {
   it("rotates the password on valid input", async () => {
     // Replace the seeded user with one whose current password is known.
-    resetDb();
-    const u = userRepo.create({
+    await resetDb();
+    const u = await userRepo.create({
       email: "cp@example.com",
       name: "CP",
       passwordHash: bcrypt.hashSync("oldpassword", 4),
@@ -703,14 +703,14 @@ describe("POST /api/auth/change-password", () => {
     const body = await res.json();
     expect(body.ok).toBe(true);
 
-    const updated = userRepo.findByEmail("cp@example.com");
+    const updated = await userRepo.findByEmail("cp@example.com");
     expect(updated).toBeTruthy();
     expect(bcrypt.compareSync("newpassword1", updated!.passwordHash)).toBe(true);
   });
 
   it("rejects wrong currentPassword with 401", async () => {
-    resetDb();
-    const u = userRepo.create({
+    await resetDb();
+    const u = await userRepo.create({
       email: "cp2@example.com",
       name: "CP2",
       passwordHash: bcrypt.hashSync("oldpassword", 4),
@@ -797,7 +797,7 @@ describe("PATCH /api/reports/:id/sections/order", () => {
 
   it("returns 404 cross-user", async () => {
     const { reportId, sections } = await makeReport();
-    process.env.AUTH_TEST_USER_ID = seedUser("order-b@example.com");
+    process.env.AUTH_TEST_USER_ID = await seedUser("order-b@example.com");
     const res = await reorderSections(
       jsonReq("PATCH", { orderedIds: sections.map((s: { id: string }) => s.id) }),
       { params: { id: reportId } },
@@ -845,7 +845,7 @@ describe("POST /api/reports/:id/sections", () => {
 
   it("returns 404 cross-user", async () => {
     const { reportId } = await makeReport();
-    process.env.AUTH_TEST_USER_ID = seedUser("add-b@example.com");
+    process.env.AUTH_TEST_USER_ID = await seedUser("add-b@example.com");
     const res = await addCustomSection(jsonReq("POST", { title: "X" }), {
       params: { id: reportId },
     });
@@ -902,7 +902,7 @@ describe("DELETE /api/reports/:id/sections/:sectionId", () => {
       params: { id: reportId },
     });
     const added = await addRes.json();
-    process.env.AUTH_TEST_USER_ID = seedUser("del-b@example.com");
+    process.env.AUTH_TEST_USER_ID = await seedUser("del-b@example.com");
     const res = await deleteSection(emptyReq("DELETE"), {
       params: { id: reportId, sectionId: added.id },
     });
@@ -923,7 +923,7 @@ describe("Per-project sharing", () => {
   it("owner shares; sharee can GET and sees in list with role=reader", async () => {
     const project = await makeProject();
     const ownerId = process.env.AUTH_TEST_USER_ID!;
-    const shareeId = seedUser("share-a@example.com");
+    const shareeId = await seedUser("share-a@example.com");
 
     const inv = await addShare(jsonReq("POST", { email: "share-a@example.com" }), {
       params: { id: project.id },
@@ -945,7 +945,7 @@ describe("Per-project sharing", () => {
 
   it("sharee PATCH project → 403 with Read-only access", async () => {
     const project = await makeProject();
-    const shareeId = seedUser("share-b@example.com");
+    const shareeId = await seedUser("share-b@example.com");
     await addShare(jsonReq("POST", { email: "share-b@example.com" }), {
       params: { id: project.id },
     });
@@ -960,7 +960,7 @@ describe("Per-project sharing", () => {
 
   it("sharee DELETE project → 403", async () => {
     const project = await makeProject();
-    const shareeId = seedUser("share-c@example.com");
+    const shareeId = await seedUser("share-c@example.com");
     await addShare(jsonReq("POST", { email: "share-c@example.com" }), {
       params: { id: project.id },
     });
@@ -971,7 +971,7 @@ describe("Per-project sharing", () => {
 
   it("sharee mutating endpoints all return 403", async () => {
     const { project, reportId } = await makeReport();
-    const shareeId = seedUser("share-d@example.com");
+    const shareeId = await seedUser("share-d@example.com");
     await addShare(jsonReq("POST", { email: "share-d@example.com" }), {
       params: { id: project.id },
     });
@@ -996,7 +996,7 @@ describe("Per-project sharing", () => {
 
   it("sharee CAN export DOCX and PDF", async () => {
     const { project, reportId } = await makeReport();
-    const shareeId = seedUser("share-e@example.com");
+    const shareeId = await seedUser("share-e@example.com");
     await addShare(jsonReq("POST", { email: "share-e@example.com" }), {
       params: { id: project.id },
     });
@@ -1010,15 +1010,15 @@ describe("Per-project sharing", () => {
 
   it("non-sharee, non-owner gets 404 on GET", async () => {
     const project = await makeProject();
-    seedUser("stranger@example.com");
-    process.env.AUTH_TEST_USER_ID = userRepo.findByEmail("stranger@example.com")!.id;
+    await seedUser("stranger@example.com");
+    process.env.AUTH_TEST_USER_ID = (await userRepo.findByEmail("stranger@example.com"))!.id;
     const res = await getProject(emptyReq("GET"), { params: { id: project.id } });
     expect(res.status).toBe(404);
   });
 
   it("owner DELETE share → sharee then 404", async () => {
     const project = await makeProject();
-    const shareeId = seedUser("share-f@example.com");
+    const shareeId = await seedUser("share-f@example.com");
     await addShare(jsonReq("POST", { email: "share-f@example.com" }), {
       params: { id: project.id },
     });
@@ -1055,7 +1055,7 @@ describe("Per-project sharing", () => {
 
   it("GET shares as sharee → 403", async () => {
     const project = await makeProject();
-    const shareeId = seedUser("share-g@example.com");
+    const shareeId = await seedUser("share-g@example.com");
     await addShare(jsonReq("POST", { email: "share-g@example.com" }), {
       params: { id: project.id },
     });
@@ -1066,7 +1066,7 @@ describe("Per-project sharing", () => {
 
   it("POST shares is idempotent on duplicate", async () => {
     const project = await makeProject();
-    seedUser("dup-share@example.com");
+    await seedUser("dup-share@example.com");
     const r1 = await addShare(jsonReq("POST", { email: "dup-share@example.com" }), {
       params: { id: project.id },
     });
@@ -1082,7 +1082,7 @@ describe("Per-project sharing", () => {
 
   it("editor share can mutate the project (PATCH name)", async () => {
     const project = await makeProject();
-    const editorId = seedUser("editor@example.com");
+    const editorId = await seedUser("editor@example.com");
     const ownerId = process.env.AUTH_TEST_USER_ID!;
     const inv = await addShare(jsonReq("POST", { email: "editor@example.com", role: "editor" }), {
       params: { id: project.id },
@@ -1099,7 +1099,7 @@ describe("Per-project sharing", () => {
 
   it("editor cannot manage shares or delete the project", async () => {
     const project = await makeProject();
-    const editorId = seedUser("editor2@example.com");
+    const editorId = await seedUser("editor2@example.com");
     const ownerId = process.env.AUTH_TEST_USER_ID!;
     await addShare(jsonReq("POST", { email: "editor2@example.com", role: "editor" }), {
       params: { id: project.id },
@@ -1114,7 +1114,7 @@ describe("Per-project sharing", () => {
 
   it("PATCH share role promotes reader to editor", async () => {
     const project = await makeProject();
-    const shareeId = seedUser("promoteable@example.com");
+    const shareeId = await seedUser("promoteable@example.com");
     await addShare(jsonReq("POST", { email: "promoteable@example.com" }), {
       params: { id: project.id },
     });
@@ -1129,7 +1129,7 @@ describe("Per-project sharing", () => {
 
   it("PATCH share role rejects invalid role", async () => {
     const project = await makeProject();
-    const shareeId = seedUser("invalid-role@example.com");
+    const shareeId = await seedUser("invalid-role@example.com");
     await addShare(jsonReq("POST", { email: "invalid-role@example.com" }), {
       params: { id: project.id },
     });
@@ -1141,7 +1141,7 @@ describe("Per-project sharing", () => {
 
   it("POST shares rejects invalid role string", async () => {
     const project = await makeProject();
-    seedUser("rolepick@example.com");
+    await seedUser("rolepick@example.com");
     const res = await addShare(jsonReq("POST", { email: "rolepick@example.com", role: "admin" }), {
       params: { id: project.id },
     });
@@ -1155,7 +1155,7 @@ describe("Per-project sharing", () => {
 
   it("POST shares with explicit role=editor adds as editor", async () => {
     const project = await makeProject();
-    seedUser("first-editor@example.com");
+    await seedUser("first-editor@example.com");
     const res = await addShare(
       jsonReq("POST", { email: "first-editor@example.com", role: "editor" }),
       { params: { id: project.id } },
@@ -1169,7 +1169,7 @@ describe("Per-project sharing", () => {
 describe("Cross-user isolation", () => {
   it("user A cannot see user B's project", async () => {
     const projectA = await makeProject();
-    const userBId = seedUser("b@example.com");
+    const userBId = await seedUser("b@example.com");
     process.env.AUTH_TEST_USER_ID = userBId;
     const list = await listProjects();
     expect(await list.json()).toEqual([]);
@@ -1179,7 +1179,7 @@ describe("Cross-user isolation", () => {
 
   it("user A cannot delete user B's project", async () => {
     const projectA = await makeProject();
-    const userBId = seedUser("b2@example.com");
+    const userBId = await seedUser("b2@example.com");
     process.env.AUTH_TEST_USER_ID = userBId;
     const del = await deleteProject(emptyReq("DELETE"), { params: { id: projectA.id } });
     expect(del.status).toBe(404);
@@ -1187,12 +1187,12 @@ describe("Cross-user isolation", () => {
 });
 
 describe("Password reset + email verification", () => {
-  function emailFromUserId(userId: string): string {
-    return userRepo.findById(userId)!.email;
+  async function emailFromUserId(userId: string): Promise<string> {
+    return (await userRepo.findById(userId))!.email;
   }
 
   it("forgot-password for an existing user returns 200 and sends one email", async () => {
-    const email = emailFromUserId(process.env.AUTH_TEST_USER_ID!);
+    const email = await emailFromUserId(process.env.AUTH_TEST_USER_ID!);
     const res = await forgotPasswordRoute(nextJsonReq("POST", { email }));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -1211,24 +1211,24 @@ describe("Password reset + email verification", () => {
 
   it("reset-password with a valid token rotates the password", async () => {
     const userId = process.env.AUTH_TEST_USER_ID!;
-    const email = emailFromUserId(userId);
-    const { token } = tokenRepo.createReset(userId);
+    const email = await emailFromUserId(userId);
+    const { token } = await tokenRepo.createReset(userId);
     const res = await resetPasswordRoute(jsonReq("POST", { token, newPassword: "brand-new-pw-9" }));
     expect(res.status).toBe(200);
-    const updated = userRepo.findByEmail(email)!;
+    const updated = (await userRepo.findByEmail(email))!;
     expect(await bcrypt.compare("brand-new-pw-9", updated.passwordHash)).toBe(true);
   });
 
   it("reset-password with newPassword shorter than 8 returns 400", async () => {
     const userId = process.env.AUTH_TEST_USER_ID!;
-    const { token } = tokenRepo.createReset(userId);
+    const { token } = await tokenRepo.createReset(userId);
     const res = await resetPasswordRoute(jsonReq("POST", { token, newPassword: "short" }));
     expect(res.status).toBe(400);
   });
 
   it("reset-password with a used token returns 400", async () => {
     const userId = process.env.AUTH_TEST_USER_ID!;
-    const { token } = tokenRepo.createReset(userId);
+    const { token } = await tokenRepo.createReset(userId);
     await resetPasswordRoute(jsonReq("POST", { token, newPassword: "valid-password-1" }));
     const second = await resetPasswordRoute(
       jsonReq("POST", { token, newPassword: "another-pw-2" }),
@@ -1252,7 +1252,7 @@ describe("Password reset + email verification", () => {
 
   it("verify-email redirects to /account?verified=1 and sets emailVerifiedAt", async () => {
     const userId = process.env.AUTH_TEST_USER_ID!;
-    const { token } = tokenRepo.createVerification(userId);
+    const { token } = await tokenRepo.createVerification(userId);
     const res = await verifyEmailRoute(
       nextEmptyReq("GET", `http://test.local/api/auth/verify-email?token=${token}`),
     );
@@ -1260,7 +1260,7 @@ describe("Password reset + email verification", () => {
     const loc = res.headers.get("location") ?? "";
     expect(loc).toContain("/account");
     expect(loc).toContain("verified=1");
-    const user = userRepo.findById(userId);
+    const user = await userRepo.findById(userId);
     expect(user?.emailVerifiedAt).toBeTruthy();
   });
 
@@ -1394,7 +1394,7 @@ describe("Email change", () => {
     expect(confirm.status).toBe(200);
     const body = (await confirm.json()) as { ok?: boolean };
     expect(body.ok).toBe(true);
-    const updated = userRepo.findById(process.env.AUTH_TEST_USER_ID!);
+    const updated = await userRepo.findById(process.env.AUTH_TEST_USER_ID!);
     expect(updated?.email).toBe("rotated@example.com");
   });
 
@@ -1470,7 +1470,7 @@ describe("Email change", () => {
     const body2 = (await peek2.json()) as { newEmail?: string };
     expect(body2.newEmail).toBe("peek@example.com");
     // And the user's email is still the original — no consumption side effect.
-    const u = userRepo.findById(process.env.AUTH_TEST_USER_ID!);
+    const u = await userRepo.findById(process.env.AUTH_TEST_USER_ID!);
     expect(u?.email).toBe("test@example.com");
   });
 
@@ -1519,7 +1519,7 @@ describe("Email change", () => {
   });
 
   it("change-email rejects already-taken email", async () => {
-    seedUser("taken@example.com");
+    await seedUser("taken@example.com");
     const res = await changeEmailRoute(
       jsonReq("POST", { newEmail: "taken@example.com", currentPassword: "password123" }),
     );
@@ -1530,7 +1530,7 @@ describe("Email change", () => {
     // If the route 409'd before checking the password, an attacker could probe
     // arbitrary emails with a junk password and tell which exist. Verify the
     // password check fires first by sending a wrong password + a taken email.
-    seedUser("alreadymine@example.com");
+    await seedUser("alreadymine@example.com");
     const res = await changeEmailRoute(
       jsonReq("POST", { newEmail: "alreadymine@example.com", currentPassword: "wrong" }),
     );
@@ -1577,7 +1577,7 @@ describe("Audit log", () => {
 
   it("records share.add and share.remove", async () => {
     const project = await makeProject();
-    const shareeId = seedUser("audit-share@example.com");
+    const shareeId = await seedUser("audit-share@example.com");
     await addShare(jsonReq("POST", { email: "audit-share@example.com" }), {
       params: { id: project.id },
     });
@@ -1591,7 +1591,7 @@ describe("Audit log", () => {
 
   it("returns 403 to a sharee", async () => {
     const project = await makeProject();
-    const shareeId = seedUser("audit-sharee@example.com");
+    const shareeId = await seedUser("audit-sharee@example.com");
     await addShare(jsonReq("POST", { email: "audit-sharee@example.com" }), {
       params: { id: project.id },
     });
@@ -1615,7 +1615,7 @@ describe("Audit log", () => {
     // audit_log.projectId has no FK reference. Re-create a fresh project so
     // we have something to compare; query the repo directly for verification.
     const { auditRepo } = await import("@/lib/db");
-    const rows = auditRepo.listForProject(projectId);
+    const rows = await auditRepo.listForProject(projectId);
     expect(rows.some((r) => r.action === "project.delete")).toBe(true);
     expect(ownerId).toBeTruthy();
   });
@@ -1627,12 +1627,12 @@ describe("Audit log", () => {
     // can split them. (The real-world clock has ms resolution; a tight loop
     // can collide, so we set createdAt explicitly here.)
     const conn = _dbInternal();
-    const insert = conn.prepare(
-      "INSERT INTO audit_log (id, projectId, userId, action, details, createdAt) VALUES (?, ?, NULL, 'section.update', NULL, ?)",
-    );
     for (let i = 0; i < 60; i++) {
       const iso = new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString();
-      insert.run(`audit-${i}`, project.id, iso);
+      await conn`
+        INSERT INTO audit_log (id, "projectId", "userId", action, details, "createdAt")
+        VALUES (${`audit-${i}`}, ${project.id}, NULL, 'section.update', NULL, ${iso})
+      `;
     }
     const res = await listAuditRoute(emptyReq("GET"), { params: { id: project.id } });
     expect(res.status).toBe(200);
@@ -1656,7 +1656,7 @@ describe("Audit log", () => {
     const project = await makeProject();
     const { auditRepo } = await import("@/lib/db");
     for (let i = 0; i < 5; i++) {
-      auditRepo.log({ projectId: project.id, userId: null, action: "section.update" });
+      await auditRepo.log({ projectId: project.id, userId: null, action: "section.update" });
     }
     // limit=99999 -> clamped, returns all rows
     const big = await listAuditRoute(new Request("http://x/?limit=99999"), {
@@ -1686,7 +1686,7 @@ describe("Audit log", () => {
     const project = await makeProject();
     const { auditRepo } = await import("@/lib/db");
     for (let i = 0; i < 5; i++) {
-      auditRepo.log({ projectId: project.id, userId: null, action: "section.update" });
+      await auditRepo.log({ projectId: project.id, userId: null, action: "section.update" });
     }
     const res = await listAuditRoute(new Request("http://x/?limit=2"), {
       params: { id: project.id },
@@ -1707,7 +1707,7 @@ describe("Audit log", () => {
     );
     expect(res.status).toBe(200);
     const token = getCapturedEmails()[0]!.link.match(/token=([a-f0-9]+)/)![1];
-    seedUser("raceme@example.com"); // race: someone else just took the email
+    await seedUser("raceme@example.com"); // race: someone else just took the email
     const confirm = await confirmEmailChangeRoute(jsonReq("POST", { token }));
     expect(confirm.status).toBe(409);
     const body = (await confirm.json()) as { error?: string };
@@ -1746,7 +1746,7 @@ describe("Rate limiting on password-bearing endpoints", () => {
   });
 
   it("change-password rate limit is per-user", async () => {
-    const otherUserId = seedUser("otheruser@example.com");
+    const otherUserId = await seedUser("otheruser@example.com");
     for (let i = 0; i < 5; i++) {
       await changePasswordRoute(
         jsonReq("POST", { currentPassword: "wrong", newPassword: "newpassword1" }),
@@ -1804,7 +1804,7 @@ describe("Account deletion", () => {
     await makeReport();
     const res = await deleteAccountRoute(jsonReq("DELETE", { currentPassword: "password123" }));
     expect(res.status).toBe(200);
-    expect(userRepo.findById(userId)).toBeUndefined();
+    expect(await userRepo.findById(userId)).toBeUndefined();
     process.env.AUTH_TEST_USER_ID = userId;
     const list = await listProjects();
     expect(await list.json()).toEqual([]);
@@ -1840,21 +1840,28 @@ describe("Audit log GDPR scrub on user delete", () => {
     }>
   > {
     const { _dbInternal } = await import("@/lib/db");
-    return _dbInternal()
-      .prepare("SELECT id, projectId, userId, action, details FROM audit_log")
-      .all() as Array<{
+    const sql = _dbInternal();
+    const rows = (await sql`
+      SELECT id, "projectId", "userId", action, details FROM audit_log
+    `) as unknown as Array<{
       id: string;
       projectId: string;
       userId: string | null;
       action: string;
-      details: string | null;
+      details: unknown;
     }>;
+    // Stringify JSONB details so existing toContain() / substring assertions
+    // keep working unchanged across the SQLite (TEXT) → Postgres (JSONB) move.
+    return rows.map((r) => ({
+      ...r,
+      details: r.details == null ? null : JSON.stringify(r.details),
+    }));
   }
 
   it("scrubs details mentioning the deleted user (actor rows)", async () => {
     const ownerId = process.env.AUTH_TEST_USER_ID!;
     const project = await makeProject();
-    const shareeId = seedUser("scrub-target@example.com");
+    const shareeId = await seedUser("scrub-target@example.com");
     // owner adds a share -> audit row userId=ownerId, details.targetUserId=shareeId
     await addShare(jsonReq("POST", { email: "scrub-target@example.com" }), {
       params: { id: project.id },
@@ -1867,7 +1874,7 @@ describe("Audit log GDPR scrub on user delete", () => {
     expect(shareAddBefore.details).toContain(shareeId);
 
     const { auditRepo } = await import("@/lib/db");
-    auditRepo.scrubUser(shareeId);
+    await auditRepo.scrubUser(shareeId);
 
     const after = await rawAuditRows();
     const shareAddAfter = after.find((r) => r.action === "share.add")!;
@@ -1880,15 +1887,15 @@ describe("Audit log GDPR scrub on user delete", () => {
 
   it("does not over-scrub rows belonging to other users", async () => {
     const project = await makeProject();
-    const otherId = seedUser("other-untouched@example.com");
-    const shareeId = seedUser("scrub-me@example.com");
+    const otherId = await seedUser("other-untouched@example.com");
+    const shareeId = await seedUser("scrub-me@example.com");
     // add a share for the unrelated other user
     await addShare(jsonReq("POST", { email: "other-untouched@example.com" }), {
       params: { id: project.id },
     });
 
     const { auditRepo } = await import("@/lib/db");
-    auditRepo.scrubUser(shareeId);
+    await auditRepo.scrubUser(shareeId);
 
     const after = await rawAuditRows();
     const shareAdd = after.find((r) => r.action === "share.add")!;
@@ -1899,14 +1906,14 @@ describe("Audit log GDPR scrub on user delete", () => {
 
   it("scrubs rows where the deleted user was the share target (different actor)", async () => {
     const project = await makeProject();
-    const shareeId = seedUser("target-only@example.com");
+    const shareeId = await seedUser("target-only@example.com");
     await addShare(jsonReq("POST", { email: "target-only@example.com" }), {
       params: { id: project.id },
     });
     await removeShare(emptyReq("DELETE"), { params: { id: project.id, userId: shareeId } });
 
     const { auditRepo } = await import("@/lib/db");
-    auditRepo.scrubUser(shareeId);
+    await auditRepo.scrubUser(shareeId);
 
     const after = await rawAuditRows();
     const shareRows = after.filter((r) => r.action === "share.add" || r.action === "share.remove");
@@ -1919,15 +1926,15 @@ describe("Audit log GDPR scrub on user delete", () => {
 
   it("is idempotent — calling scrubUser twice does not double-scrub or fail", async () => {
     const project = await makeProject();
-    const shareeId = seedUser("idem@example.com");
+    const shareeId = await seedUser("idem@example.com");
     await addShare(jsonReq("POST", { email: "idem@example.com" }), {
       params: { id: project.id },
     });
 
     const { auditRepo } = await import("@/lib/db");
-    auditRepo.scrubUser(shareeId);
+    await auditRepo.scrubUser(shareeId);
     const first = await rawAuditRows();
-    auditRepo.scrubUser(shareeId);
+    await auditRepo.scrubUser(shareeId);
     const second = await rawAuditRows();
     expect(second).toEqual(first);
   });
@@ -1942,7 +1949,7 @@ describe("Audit log GDPR scrub on user delete", () => {
     // Make someone else share a project back to the owner so owner appears
     // as a targetUserId. Easiest path: switch session to a fresh user, have
     // them create a project and share to the owner.
-    const otherId = seedUser("delegator@example.com");
+    const otherId = await seedUser("delegator@example.com");
     process.env.AUTH_TEST_USER_ID = otherId;
     const otherProject = await createProject(jsonReq("POST", PROJECT_BODY));
     const otherProjectId = (await otherProject.json()).id;
@@ -1956,57 +1963,57 @@ describe("Audit log GDPR scrub on user delete", () => {
     expect(res.status).toBe(200);
 
     const { _dbInternal } = await import("@/lib/db");
-    const rows = _dbInternal().prepare("SELECT details FROM audit_log").all() as Array<{
-      details: string | null;
+    const sql = _dbInternal();
+    const rows = (await sql`SELECT details FROM audit_log`) as unknown as Array<{
+      details: unknown;
     }>;
     for (const r of rows) {
-      expect(r.details ?? "").not.toContain(ownerId);
+      expect(r.details == null ? "" : JSON.stringify(r.details)).not.toContain(ownerId);
     }
   });
 
   it("preserves audit_log.createdAt across scrubUser", async () => {
     const project = await makeProject();
-    const shareeId = seedUser("preserve-createdAt@example.com");
+    const shareeId = await seedUser("preserve-createdAt@example.com");
     await addShare(jsonReq("POST", { email: "preserve-createdAt@example.com" }), {
       params: { id: project.id },
     });
     const { _dbInternal, auditRepo } = await import("@/lib/db");
-    const before = _dbInternal()
-      .prepare("SELECT id, createdAt FROM audit_log WHERE action = 'share.add'")
-      .get() as { id: string; createdAt: string };
-    auditRepo.scrubUser(shareeId);
-    const after = _dbInternal()
-      .prepare("SELECT id, createdAt FROM audit_log WHERE id = ?")
-      .get(before.id) as { id: string; createdAt: string };
-    expect(after.createdAt).toBe(before.createdAt);
+    const sql = _dbInternal();
+    const beforeRows = (await sql`
+      SELECT id, "createdAt" FROM audit_log WHERE action = 'share.add'
+    `) as unknown as { id: string; createdAt: string }[];
+    const before = beforeRows[0];
+    await auditRepo.scrubUser(shareeId);
+    const afterRows = (await sql`
+      SELECT id, "createdAt" FROM audit_log WHERE id = ${before.id}
+    `) as unknown as { id: string; createdAt: string }[];
+    expect(afterRows[0].createdAt).toBe(before.createdAt);
   });
 
-  it("ignores non-JSON details (no over-broad substring scrub)", async () => {
-    // Synthesize a non-JSON details row that happens to contain the userId as
-    // a substring of unrelated text. scrubUser must NOT touch it: details is
-    // contractually JSON in the codebase, and the LIKE-substring fallback is
-    // a footgun if a UUID ever appears inside unrelated free text.
+  it("ignores embedded-substring matches (only exact-match values are scrubbed)", async () => {
+    // The userId appears as a substring inside a longer string value, not as
+    // the value itself. scrubUser must NOT touch it: the LIKE-prefilter is a
+    // performance hint, the actual rewrite must only replace exact-equal
+    // values (otherwise free-text descriptions become a footgun).
     const project = await makeProject();
-    const shareeId = seedUser("non-json@example.com");
+    const shareeId = await seedUser("non-json@example.com");
     const { _dbInternal, auditRepo } = await import("@/lib/db");
-    const conn = _dbInternal();
-    const rowId = "non-json-row";
-    conn
-      .prepare(
-        "INSERT INTO audit_log (id, projectId, userId, action, details, createdAt) VALUES (?, ?, NULL, ?, ?, ?)",
+    const sql = _dbInternal();
+    const rowId = "embedded-substring-row";
+    const description = `free text mentioning ${shareeId} inline`;
+    await sql`
+      INSERT INTO audit_log (id, "projectId", "userId", action, details, "createdAt")
+      VALUES (
+        ${rowId}, ${project.id}, NULL, ${"synthetic.note"},
+        ${sql.json({ description } as never)}, ${new Date().toISOString()}
       )
-      .run(
-        rowId,
-        project.id,
-        "synthetic.note",
-        `free text mentioning ${shareeId} inline`,
-        new Date().toISOString(),
-      );
-    auditRepo.scrubUser(shareeId);
-    const after = conn.prepare("SELECT details FROM audit_log WHERE id = ?").get(rowId) as {
-      details: string;
-    };
-    expect(after.details).toBe(`free text mentioning ${shareeId} inline`);
+    `;
+    await auditRepo.scrubUser(shareeId);
+    const afterRows = (await sql`
+      SELECT details FROM audit_log WHERE id = ${rowId}
+    `) as unknown as { details: { description: string } }[];
+    expect(afterRows[0].details.description).toBe(description);
   });
 });
 

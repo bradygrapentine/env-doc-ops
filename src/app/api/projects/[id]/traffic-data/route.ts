@@ -26,10 +26,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     );
   }
 
-  const stored = trafficRepo.replaceForProject(params.id, parsed.rows);
+  const stored = await trafficRepo.replaceForProject(params.id, parsed.rows);
   const intersections = Array.from(new Set(stored.map((r) => r.intersection)));
 
-  auditRepo.log({
+  await auditRepo.log({
     projectId: params.id,
     userId: guard.userId,
     action: "traffic.import",

@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   }
   const newEmail = newEmailRaw.trim().toLowerCase();
 
-  const user = userRepo.findById(userId);
+  const user = await userRepo.findById(userId);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   if (user.email === newEmail) {
@@ -43,17 +43,17 @@ export async function POST(req: Request) {
   // Verify the password BEFORE checking for an email conflict — otherwise the
   // 409 short-circuits the bcrypt call, letting an authenticated attacker
   // probe whether arbitrary emails exist on the system in a fast loop.
-  const full = userRepo.findByEmail(user.email);
+  const full = await userRepo.findByEmail(user.email);
   if (!full || !(await bcrypt.compare(currentPassword, full.passwordHash))) {
     return NextResponse.json({ error: "Current password is incorrect" }, { status: 401 });
   }
   clearPasswordRateLimit(userId, "change-email");
 
-  if (userRepo.findByEmail(newEmail)) {
+  if (await userRepo.findByEmail(newEmail)) {
     return NextResponse.json({ error: "Email already in use" }, { status: 409 });
   }
 
-  const { token } = tokenRepo.createEmailChange(userId, newEmail);
+  const { token } = await tokenRepo.createEmailChange(userId, newEmail);
   const base = emailLinkBase(req);
   const link = `${base}/account/confirm-email-change?token=${token}`;
   await sendEmailChangeConfirmation(newEmail, link);

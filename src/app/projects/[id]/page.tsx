@@ -20,7 +20,7 @@ export default async function ProjectPage({ params }: { params: { id: string } }
   const { project, role } = guard;
   const isOwner = role === "owner";
 
-  const rows = trafficRepo.listByProject(params.id);
+  const rows = await trafficRepo.listByProject(params.id);
   const metrics = calculateMetrics(rows);
 
   return (

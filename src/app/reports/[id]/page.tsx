@@ -14,7 +14,7 @@ export default async function ReportPage({ params }: { params: { id: string } })
   if (!guard.ok) notFound();
   const { project, report, role } = guard;
 
-  const rows = trafficRepo.listByProject(project.id);
+  const rows = await trafficRepo.listByProject(project.id);
   const metrics = calculateMetrics(rows);
 
   return (
