@@ -13,7 +13,7 @@ export default async function AccountPage(props: { searchParams?: { email_change
   if (!userId) {
     redirect("/signin");
   }
-  const user = userRepo.findById(userId);
+  const user = await userRepo.findById(userId);
   if (!user) {
     redirect("/signin");
   }

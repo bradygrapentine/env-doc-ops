@@ -3,8 +3,8 @@ import bcrypt from "bcryptjs";
 import { projectRepo, trafficRepo, shareRepo, userRepo } from "./db";
 import { resetDb } from "../../test/db";
 
-beforeEach(() => {
-  resetDb();
+beforeEach(async () => {
+  await resetDb();
 });
 
 const baseInput = {
@@ -19,13 +19,13 @@ const baseInput = {
 };
 
 describe("projectRepo.update", () => {
-  it("returns undefined for a missing project", () => {
-    expect(projectRepo.update("nope", { name: "X" })).toBeUndefined();
+  it("returns undefined for a missing project", async () => {
+    expect(await projectRepo.update("nope", { name: "X" })).toBeUndefined();
   });
 
-  it("only updates the fields in the patch (does not null other fields)", () => {
-    const created = projectRepo.create(baseInput);
-    const updated = projectRepo.update(created.id, { name: "Renamed" });
+  it("only updates the fields in the patch (does not null other fields)", async () => {
+    const created = await projectRepo.create(baseInput);
+    const updated = await projectRepo.update(created.id, { name: "Renamed" });
     expect(updated).toBeDefined();
     expect(updated!.name).toBe("Renamed");
     expect(updated!.location).toBe(baseInput.location);
@@ -38,9 +38,9 @@ describe("projectRepo.update", () => {
     expect(updated!.createdAt).toBe(created.createdAt);
   });
 
-  it("updates multiple fields at once", () => {
-    const created = projectRepo.create(baseInput);
-    const updated = projectRepo.update(created.id, {
+  it("updates multiple fields at once", async () => {
+    const created = await projectRepo.create(baseInput);
+    const updated = await projectRepo.update(created.id, {
       name: "N2",
       location: "L2",
       preparedBy: "PB2",
@@ -53,43 +53,43 @@ describe("projectRepo.update", () => {
 });
 
 describe("projectRepo manualInputs", () => {
-  it("create round-trips manualInputs through get", () => {
-    const created = projectRepo.create({
+  it("create round-trips manualInputs through get", async () => {
+    const created = await projectRepo.create({
       ...baseInput,
       manualInputs: {
         growthRate: "1.5%",
         tripGenAssumptions: "ITE 220",
       },
     });
-    const got = projectRepo.get(created.id);
+    const got = await projectRepo.get(created.id);
     expect(got!.manualInputs).toEqual({
       growthRate: "1.5%",
       tripGenAssumptions: "ITE 220",
     });
   });
 
-  it("update sets manualInputs JSON", () => {
-    const created = projectRepo.create(baseInput);
+  it("update sets manualInputs JSON", async () => {
+    const created = await projectRepo.create(baseInput);
     expect(created.manualInputs).toBeUndefined();
-    const updated = projectRepo.update(created.id, {
+    const updated = await projectRepo.update(created.id, {
       manualInputs: {
         engineerConclusions: "Looks fine.",
       },
     });
     expect(updated!.manualInputs).toEqual({ engineerConclusions: "Looks fine." });
-    const got = projectRepo.get(created.id);
+    const got = await projectRepo.get(created.id);
     expect(got!.manualInputs).toEqual({ engineerConclusions: "Looks fine." });
   });
 
-  it("update with manualInputs: undefined clears the column", () => {
-    const created = projectRepo.create({
+  it("update with manualInputs: undefined clears the column", async () => {
+    const created = await projectRepo.create({
       ...baseInput,
       manualInputs: { tripGenAssumptions: "x" },
     });
     expect(created.manualInputs).toEqual({ tripGenAssumptions: "x" });
-    const cleared = projectRepo.update(created.id, { manualInputs: undefined });
+    const cleared = await projectRepo.update(created.id, { manualInputs: undefined });
     expect(cleared!.manualInputs).toBeUndefined();
-    const got = projectRepo.get(created.id);
+    const got = await projectRepo.get(created.id);
     expect(got!.manualInputs).toBeUndefined();
   });
 });
@@ -104,19 +104,19 @@ describe("trafficRepo row helpers", () => {
     total: 30,
   };
 
-  it("addRow round-trips through getRow", () => {
-    const project = projectRepo.create(baseInput);
-    const added = trafficRepo.addRow(project.id, sampleRow);
+  it("addRow round-trips through getRow", async () => {
+    const project = await projectRepo.create(baseInput);
+    const added = await trafficRepo.addRow(project.id, sampleRow);
     expect(added.id).toBeTruthy();
     expect(added.projectId).toBe(project.id);
-    const got = trafficRepo.getRow(project.id, added.id);
+    const got = await trafficRepo.getRow(project.id, added.id);
     expect(got).toMatchObject(sampleRow);
   });
 
-  it("updateRow only changes supplied fields; others unchanged", () => {
-    const project = projectRepo.create(baseInput);
-    const added = trafficRepo.addRow(project.id, sampleRow);
-    const updated = trafficRepo.updateRow(project.id, added.id, { inbound: 99 });
+  it("updateRow only changes supplied fields; others unchanged", async () => {
+    const project = await projectRepo.create(baseInput);
+    const added = await trafficRepo.addRow(project.id, sampleRow);
+    const updated = await trafficRepo.updateRow(project.id, added.id, { inbound: 99 });
     expect(updated).toBeDefined();
     expect(updated!.inbound).toBe(99);
     expect(updated!.outbound).toBe(sampleRow.outbound);
@@ -126,40 +126,40 @@ describe("trafficRepo row helpers", () => {
     expect(updated!.approach).toBe(sampleRow.approach);
   });
 
-  it("getRow returns undefined for a row id from a different project", () => {
-    const projA = projectRepo.create(baseInput);
-    const projB = projectRepo.create({ ...baseInput, name: "B" });
-    const added = trafficRepo.addRow(projA.id, sampleRow);
-    expect(trafficRepo.getRow(projB.id, added.id)).toBeUndefined();
-    expect(trafficRepo.updateRow(projB.id, added.id, { inbound: 1 })).toBeUndefined();
+  it("getRow returns undefined for a row id from a different project", async () => {
+    const projA = await projectRepo.create(baseInput);
+    const projB = await projectRepo.create({ ...baseInput, name: "B" });
+    const added = await trafficRepo.addRow(projA.id, sampleRow);
+    expect(await trafficRepo.getRow(projB.id, added.id)).toBeUndefined();
+    expect(await trafficRepo.updateRow(projB.id, added.id, { inbound: 1 })).toBeUndefined();
   });
 
-  it("deleteRow returns false for a row not in the project", () => {
-    const projA = projectRepo.create(baseInput);
-    const projB = projectRepo.create({ ...baseInput, name: "B" });
-    const added = trafficRepo.addRow(projA.id, sampleRow);
-    expect(trafficRepo.deleteRow(projB.id, added.id)).toBe(false);
-    expect(trafficRepo.deleteRow(projA.id, "nope")).toBe(false);
-    expect(trafficRepo.deleteRow(projA.id, added.id)).toBe(true);
-    expect(trafficRepo.getRow(projA.id, added.id)).toBeUndefined();
+  it("deleteRow returns false for a row not in the project", async () => {
+    const projA = await projectRepo.create(baseInput);
+    const projB = await projectRepo.create({ ...baseInput, name: "B" });
+    const added = await trafficRepo.addRow(projA.id, sampleRow);
+    expect(await trafficRepo.deleteRow(projB.id, added.id)).toBe(false);
+    expect(await trafficRepo.deleteRow(projA.id, "nope")).toBe(false);
+    expect(await trafficRepo.deleteRow(projA.id, added.id)).toBe(true);
+    expect(await trafficRepo.getRow(projA.id, added.id)).toBeUndefined();
   });
 });
 
 describe("shareRepo", () => {
-  function mkUser(email: string) {
-    return userRepo.create({
+  async function mkUser(email: string) {
+    return await userRepo.create({
       email,
       name: email.split("@")[0],
       passwordHash: bcrypt.hashSync("password123", 4),
     });
   }
 
-  it("add round-trips via listForProject", () => {
-    const owner = mkUser("owner@a.test");
-    const sharee = mkUser("sharee@a.test");
-    const project = projectRepo.create({ ...baseInput, userId: owner.id });
-    expect(shareRepo.add(project.id, sharee.id, "reader")).toBe(true);
-    const list = shareRepo.listForProject(project.id);
+  it("add round-trips via listForProject", async () => {
+    const owner = await mkUser("owner@a.test");
+    const sharee = await mkUser("sharee@a.test");
+    const project = await projectRepo.create({ ...baseInput, userId: owner.id });
+    expect(await shareRepo.add(project.id, sharee.id, "reader")).toBe(true);
+    const list = await shareRepo.listForProject(project.id);
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({
       userId: sharee.id,
@@ -168,73 +168,68 @@ describe("shareRepo", () => {
     });
   });
 
-  it("add is idempotent on duplicate", () => {
-    const owner = mkUser("owner@b.test");
-    const sharee = mkUser("sharee@b.test");
-    const project = projectRepo.create({ ...baseInput, userId: owner.id });
-    expect(shareRepo.add(project.id, sharee.id, "reader")).toBe(true);
-    expect(shareRepo.add(project.id, sharee.id, "reader")).toBe(false);
-    expect(shareRepo.listForProject(project.id)).toHaveLength(1);
+  it("add is idempotent on duplicate", async () => {
+    const owner = await mkUser("owner@b.test");
+    const sharee = await mkUser("sharee@b.test");
+    const project = await projectRepo.create({ ...baseInput, userId: owner.id });
+    expect(await shareRepo.add(project.id, sharee.id, "reader")).toBe(true);
+    expect(await shareRepo.add(project.id, sharee.id, "reader")).toBe(false);
+    expect(await shareRepo.listForProject(project.id)).toHaveLength(1);
   });
 
-  it("cascades on project deletion", () => {
-    const owner = mkUser("owner@c.test");
-    const sharee = mkUser("sharee@c.test");
-    const sharee2 = mkUser("sharee2@c.test");
-    const projectA = projectRepo.create({ ...baseInput, userId: owner.id });
-    const projectB = projectRepo.create({ ...baseInput, name: "B", userId: owner.id });
-    shareRepo.add(projectA.id, sharee.id, "reader");
-    shareRepo.add(projectB.id, sharee2.id, "reader");
-    projectRepo.delete(projectA.id);
-    expect(shareRepo.listForProject(projectA.id)).toHaveLength(0);
-    expect(shareRepo.listForProject(projectB.id)).toHaveLength(1);
+  it("cascades on project deletion", async () => {
+    const owner = await mkUser("owner@c.test");
+    const sharee = await mkUser("sharee@c.test");
+    const sharee2 = await mkUser("sharee2@c.test");
+    const projectA = await projectRepo.create({ ...baseInput, userId: owner.id });
+    const projectB = await projectRepo.create({ ...baseInput, name: "B", userId: owner.id });
+    await shareRepo.add(projectA.id, sharee.id, "reader");
+    await shareRepo.add(projectB.id, sharee2.id, "reader");
+    await projectRepo.delete(projectA.id);
+    expect(await shareRepo.listForProject(projectA.id)).toHaveLength(0);
+    expect(await shareRepo.listForProject(projectB.id)).toHaveLength(1);
   });
 
-  it("accessRole returns owner / reader / null", () => {
-    const owner = mkUser("owner@d.test");
-    const sharee = mkUser("sharee@d.test");
-    const stranger = mkUser("stranger@d.test");
-    const project = projectRepo.create({ ...baseInput, userId: owner.id });
-    shareRepo.add(project.id, sharee.id, "reader");
-    expect(shareRepo.accessRole(project.id, owner.id)).toBe("owner");
-    expect(shareRepo.accessRole(project.id, sharee.id)).toBe("reader");
-    expect(shareRepo.accessRole(project.id, stranger.id)).toBe(null);
-    expect(shareRepo.accessRole("nope", owner.id)).toBe(null);
+  it("accessRole returns owner / reader / null", async () => {
+    const owner = await mkUser("owner@d.test");
+    const sharee = await mkUser("sharee@d.test");
+    const stranger = await mkUser("stranger@d.test");
+    const project = await projectRepo.create({ ...baseInput, userId: owner.id });
+    await shareRepo.add(project.id, sharee.id, "reader");
+    expect(await shareRepo.accessRole(project.id, owner.id)).toBe("owner");
+    expect(await shareRepo.accessRole(project.id, sharee.id)).toBe("reader");
+    expect(await shareRepo.accessRole(project.id, stranger.id)).toBe(null);
+    expect(await shareRepo.accessRole("nope", owner.id)).toBe(null);
   });
 
   it("user-deletion cascades shares", async () => {
-    const owner = mkUser("owner@e.test");
-    const sharee = mkUser("sharee@e.test");
-    const project = projectRepo.create({ ...baseInput, userId: owner.id });
-    shareRepo.add(project.id, sharee.id, "reader");
-    expect(shareRepo.listForProject(project.id)).toHaveLength(1);
-    const { closeDb } = await import("./db");
-    closeDb();
-    const Database = (await import("better-sqlite3")).default;
-    const conn = new Database(process.env.ENVDOCOS_DB_PATH!);
-    conn.pragma("foreign_keys = ON");
-    conn.prepare("DELETE FROM users WHERE id = ?").run(sharee.id);
-    conn.close();
-    expect(shareRepo.listForProject(project.id)).toHaveLength(0);
+    const owner = await mkUser("owner@e.test");
+    const sharee = await mkUser("sharee@e.test");
+    const project = await projectRepo.create({ ...baseInput, userId: owner.id });
+    await shareRepo.add(project.id, sharee.id, "reader");
+    expect(await shareRepo.listForProject(project.id)).toHaveLength(1);
+    const { _dbInternal } = await import("./db");
+    await _dbInternal()`DELETE FROM users WHERE id = ${sharee.id}`;
+    expect(await shareRepo.listForProject(project.id)).toHaveLength(0);
   });
 });
 
 describe("projectRepo.listAccessible", () => {
-  function mkUser(email: string) {
-    return userRepo.create({
+  async function mkUser(email: string) {
+    return await userRepo.create({
       email,
       name: email.split("@")[0],
       passwordHash: bcrypt.hashSync("password123", 4),
     });
   }
 
-  it("returns owned + shared with role attached", () => {
-    const a = mkUser("a@list.test");
-    const b = mkUser("b@list.test");
-    const owned = projectRepo.create({ ...baseInput, userId: a.id, name: "Owned" });
-    const others = projectRepo.create({ ...baseInput, userId: b.id, name: "Others" });
-    shareRepo.add(others.id, a.id, "reader");
-    const list = projectRepo.listAccessible(a.id);
+  it("returns owned + shared with role attached", async () => {
+    const a = await mkUser("a@list.test");
+    const b = await mkUser("b@list.test");
+    const owned = await projectRepo.create({ ...baseInput, userId: a.id, name: "Owned" });
+    const others = await projectRepo.create({ ...baseInput, userId: b.id, name: "Others" });
+    await shareRepo.add(others.id, a.id, "reader");
+    const list = await projectRepo.listAccessible(a.id);
     expect(list).toHaveLength(2);
     const ownedRow = list.find((p) => p.id === owned.id);
     const sharedRow = list.find((p) => p.id === others.id);
@@ -246,13 +241,13 @@ describe("projectRepo.listAccessible", () => {
 });
 
 describe("projectRepo.delete", () => {
-  it("returns false for an unknown id", () => {
-    expect(projectRepo.delete("nope")).toBe(false);
+  it("returns false for an unknown id", async () => {
+    expect(await projectRepo.delete("nope")).toBe(false);
   });
 
-  it("returns true and removes the project on success", () => {
-    const created = projectRepo.create(baseInput);
-    expect(projectRepo.delete(created.id)).toBe(true);
-    expect(projectRepo.get(created.id)).toBeUndefined();
+  it("returns true and removes the project on success", async () => {
+    const created = await projectRepo.create(baseInput);
+    expect(await projectRepo.delete(created.id)).toBe(true);
+    expect(await projectRepo.get(created.id)).toBeUndefined();
   });
 });

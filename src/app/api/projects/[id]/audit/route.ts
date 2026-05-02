@@ -19,5 +19,5 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     if (Number.isFinite(parsed) && parsed > 0) opts.limit = parsed;
   }
   if (before) opts.before = before;
-  return NextResponse.json(auditRepo.listForProject(params.id, opts));
+  return NextResponse.json(await auditRepo.listForProject(params.id, opts));
 }

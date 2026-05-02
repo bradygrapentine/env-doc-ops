@@ -19,9 +19,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const contentRaw = (body as { content?: unknown }).content;
   const content = typeof contentRaw === "string" ? contentRaw : "";
 
-  const section = reportRepo.addCustomSection(params.id, { title: titleRaw, content });
+  const section = await reportRepo.addCustomSection(params.id, { title: titleRaw, content });
   if (!section) return NextResponse.json({ error: "Report not found" }, { status: 404 });
-  auditRepo.log({
+  await auditRepo.log({
     projectId: guard.project.id,
     userId: guard.userId,
     action: "section.add",

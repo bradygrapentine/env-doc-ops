@@ -20,10 +20,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  const user = userRepo.findByEmail(email);
+  const user = await userRepo.findByEmail(email);
   if (user) {
     try {
-      const { token } = tokenRepo.createReset(user.id);
+      const { token } = await tokenRepo.createReset(user.id);
       const link = `${emailLinkBase(req)}/reset-password?token=${token}`;
       await sendPasswordResetEmail(user.email, link);
     } catch (err) {

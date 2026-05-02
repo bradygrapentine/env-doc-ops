@@ -9,7 +9,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (!guard.ok) return guard.error;
   const project = guard.project;
 
-  const rows = trafficRepo.listByProject(params.id);
+  const rows = await trafficRepo.listByProject(params.id);
   if (rows.length === 0) {
     return NextResponse.json(
       { error: "Upload traffic count CSV before generating a report" },
@@ -18,11 +18,11 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   }
 
   const fresh = generateReportSections(project, rows);
-  const existing = reportRepo.getByProject(params.id);
+  const existing = await reportRepo.getByProject(params.id);
   const { merged, refreshed, preserved } = planRegenerate(existing?.sections, fresh);
-  const report = reportRepo.upsertForProject(params.id, merged);
+  const report = await reportRepo.upsertForProject(params.id, merged);
 
-  auditRepo.log({
+  await auditRepo.log({
     projectId: params.id,
     userId: guard.userId,
     action: existing ? "report.regenerate" : "report.generate",

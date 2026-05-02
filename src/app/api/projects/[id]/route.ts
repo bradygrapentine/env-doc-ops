@@ -87,9 +87,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: "Empty patch" }, { status: 400 });
   }
 
-  const updated = projectRepo.update(params.id, patch);
+  const updated = await projectRepo.update(params.id, patch);
   if (!updated) return NextResponse.json({ error: "Project not found" }, { status: 404 });
-  auditRepo.log({
+  await auditRepo.log({
     projectId: params.id,
     userId: guard.userId,
     action: "project.update",
@@ -107,12 +107,12 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   // Log BEFORE delete: audit_log.projectId has no FK so the row survives,
   // but logging first also avoids the (small) ordering risk of inserting
   // into a path the user can no longer see.
-  auditRepo.log({
+  await auditRepo.log({
     projectId: params.id,
     userId: guard.userId,
     action: "project.delete",
     details: { name: guard.project.name },
   });
-  projectRepo.delete(params.id);
+  await projectRepo.delete(params.id);
   return new Response(null, { status: 204 });
 }

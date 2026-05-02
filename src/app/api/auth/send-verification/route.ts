@@ -10,13 +10,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const user = userRepo.findById(userId);
+  const user = await userRepo.findById(userId);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const { token } = tokenRepo.createVerification(userId);
+    const { token } = await tokenRepo.createVerification(userId);
     const link = `${emailLinkBase(req)}/api/auth/verify-email?token=${token}`;
     await sendVerificationEmail(user.email, link);
   } catch (err) {

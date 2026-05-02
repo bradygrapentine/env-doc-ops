@@ -6,9 +6,9 @@ import { userRepo, _dbInternal } from "./db";
 
 let userId: string;
 
-beforeEach(() => {
-  resetDb();
-  const u = userRepo.create({
+beforeEach(async () => {
+  await resetDb();
+  const u = await userRepo.create({
     email: "tok@example.com",
     name: "Tok",
     passwordHash: bcrypt.hashSync("password123", 4),
@@ -17,64 +17,64 @@ beforeEach(() => {
 });
 
 describe("tokenRepo.createReset / consumeReset", () => {
-  it("createReset then consumeReset returns userId", () => {
-    const { token } = tokenRepo.createReset(userId);
-    const result = tokenRepo.consumeReset(token);
+  it("createReset then consumeReset returns userId", async () => {
+    const { token } = await tokenRepo.createReset(userId);
+    const result = await tokenRepo.consumeReset(token);
     expect(result).toEqual({ userId });
   });
 
-  it("consumeReset on a freshly-consumed token returns used", () => {
-    const { token } = tokenRepo.createReset(userId);
-    tokenRepo.consumeReset(token);
-    const second = tokenRepo.consumeReset(token);
+  it("consumeReset on a freshly-consumed token returns used", async () => {
+    const { token } = await tokenRepo.createReset(userId);
+    await tokenRepo.consumeReset(token);
+    const second = await tokenRepo.consumeReset(token);
     expect(second).toEqual({ error: "used" });
   });
 
-  it("consumeReset on an expired token returns expired", () => {
+  it("consumeReset on an expired token returns expired", async () => {
     // Insert a row with a past expiresAt directly.
     const past = new Date(Date.now() - 1000).toISOString();
     const token = "expired-reset-token";
-    _dbInternal()
-      .prepare(
-        "INSERT INTO password_reset_tokens (token, userId, expiresAt, usedAt) VALUES (?, ?, ?, NULL)",
-      )
-      .run(token, userId, past);
-    const result = tokenRepo.consumeReset(token);
+    const sql = _dbInternal();
+    await sql`
+      INSERT INTO password_reset_tokens (token, "userId", "expiresAt", "usedAt")
+      VALUES (${token}, ${userId}, ${past}, NULL)
+    `;
+    const result = await tokenRepo.consumeReset(token);
     expect(result).toEqual({ error: "expired" });
   });
 
-  it("consumeReset on garbage returns invalid", () => {
-    expect(tokenRepo.consumeReset("garbage")).toEqual({ error: "invalid" });
+  it("consumeReset on garbage returns invalid", async () => {
+    expect(await tokenRepo.consumeReset("garbage")).toEqual({ error: "invalid" });
   });
 });
 
 describe("tokenRepo.createVerification / consumeVerification", () => {
-  it("createVerification then consumeVerification returns userId", () => {
-    const { token } = tokenRepo.createVerification(userId);
-    const result = tokenRepo.consumeVerification(token);
+  it("createVerification then consumeVerification returns userId", async () => {
+    const { token } = await tokenRepo.createVerification(userId);
+    const result = await tokenRepo.consumeVerification(token);
     expect(result).toEqual({ userId });
   });
 
-  it("consumeVerification on a freshly-consumed token returns used", () => {
-    const { token } = tokenRepo.createVerification(userId);
-    tokenRepo.consumeVerification(token);
-    const second = tokenRepo.consumeVerification(token);
+  it("consumeVerification on a freshly-consumed token returns used", async () => {
+    const { token } = await tokenRepo.createVerification(userId);
+    await tokenRepo.consumeVerification(token);
+    const second = await tokenRepo.consumeVerification(token);
     expect(second).toEqual({ error: "used" });
   });
 
-  it("consumeVerification on an expired token returns expired", () => {
+  it("consumeVerification on an expired token returns expired", async () => {
     const past = new Date(Date.now() - 1000).toISOString();
     const token = "expired-verify-token";
-    _dbInternal()
-      .prepare(
-        "INSERT INTO verification_tokens (token, userId, expiresAt, usedAt) VALUES (?, ?, ?, NULL)",
-      )
-      .run(token, userId, past);
-    const result = tokenRepo.consumeVerification(token);
+    const sql = _dbInternal();
+    await sql`
+      INSERT INTO verification_tokens (token, "userId", "expiresAt", "usedAt")
+      VALUES (${token}, ${userId}, ${past}, NULL)
+    `;
+    const result = await tokenRepo.consumeVerification(token);
     expect(result).toEqual({ error: "expired" });
   });
 
-  it("consumeVerification on garbage returns invalid", () => {
-    expect(tokenRepo.consumeVerification("garbage")).toEqual({ error: "invalid" });
+  it("consumeVerification on garbage returns invalid", async () => {
+    expect(await tokenRepo.consumeVerification("garbage")).toEqual({ error: "invalid" });
   });
 });

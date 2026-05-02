@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const result = tokenRepo.consumeReset(token);
+  const result = await tokenRepo.consumeReset(token);
   if ("error" in result) {
     const messages = {
       invalid: "Reset link is invalid.",
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   }
 
   const hash = await bcrypt.hash(newPassword, 10);
-  userRepo.updatePassword(result.userId, hash);
+  await userRepo.updatePassword(result.userId, hash);
 
   return NextResponse.json({ ok: true });
 }

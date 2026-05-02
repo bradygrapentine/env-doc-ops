@@ -7,7 +7,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string; ro
   const guard = await requireOwnedProject(params.id);
   if (!guard.ok) return guard.error;
 
-  const existing = trafficRepo.getRow(params.id, params.rowId);
+  const existing = await trafficRepo.getRow(params.id, params.rowId);
   if (!existing) {
     return NextResponse.json({ error: "Row not found" }, { status: 404 });
   }
@@ -45,7 +45,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string; ro
     return NextResponse.json({ error: "Invalid row", issues: v.issues }, { status: 400 });
   }
 
-  const updated = trafficRepo.updateRow(params.id, params.rowId, v.row);
+  const updated = await trafficRepo.updateRow(params.id, params.rowId, v.row);
   if (!updated) {
     return NextResponse.json({ error: "Row not found" }, { status: 404 });
   }
@@ -56,7 +56,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string; 
   const guard = await requireOwnedProject(params.id);
   if (!guard.ok) return guard.error;
 
-  const ok = trafficRepo.deleteRow(params.id, params.rowId);
+  const ok = await trafficRepo.deleteRow(params.id, params.rowId);
   if (!ok) return NextResponse.json({ error: "Row not found" }, { status: 404 });
   return new NextResponse(null, { status: 204 });
 }

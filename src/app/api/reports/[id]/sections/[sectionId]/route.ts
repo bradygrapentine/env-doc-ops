@@ -28,9 +28,9 @@ export async function PATCH(
     patch.status = body.status;
   }
 
-  const updated = reportRepo.updateSection(params.id, params.sectionId, patch);
+  const updated = await reportRepo.updateSection(params.id, params.sectionId, patch);
   if (!updated) return NextResponse.json({ error: "Report not found" }, { status: 404 });
-  auditRepo.log({
+  await auditRepo.log({
     projectId: guard.project.id,
     userId: guard.userId,
     action: "section.update",
@@ -46,9 +46,9 @@ export async function DELETE(
   const guard = await requireOwnedReport(params.id);
   if (!guard.ok) return guard.error;
 
-  const result = reportRepo.removeSection(params.id, params.sectionId);
+  const result = await reportRepo.removeSection(params.id, params.sectionId);
   if (result.ok) {
-    auditRepo.log({
+    await auditRepo.log({
       projectId: guard.project.id,
       userId: guard.userId,
       action: "section.delete",

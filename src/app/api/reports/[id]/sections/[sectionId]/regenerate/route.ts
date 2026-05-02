@@ -11,7 +11,7 @@ export async function POST(
   if (!guard.ok) return guard.error;
   const { project } = guard;
 
-  const rows = trafficRepo.listByProject(project.id);
+  const rows = await trafficRepo.listByProject(project.id);
   if (rows.length === 0) {
     return NextResponse.json(
       { error: "Upload traffic count CSV before regenerating sections" },
@@ -25,13 +25,13 @@ export async function POST(
     return NextResponse.json({ error: "Section not found in current template" }, { status: 404 });
   }
 
-  const updated = reportRepo.updateSection(params.id, params.sectionId, {
+  const updated = await reportRepo.updateSection(params.id, params.sectionId, {
     content: match.content,
     status: "draft",
     machineBaseline: match.machineBaseline,
   });
   if (!updated) return NextResponse.json({ error: "Report not found" }, { status: 404 });
-  auditRepo.log({
+  await auditRepo.log({
     projectId: project.id,
     userId: guard.userId,
     action: "section.regenerate",

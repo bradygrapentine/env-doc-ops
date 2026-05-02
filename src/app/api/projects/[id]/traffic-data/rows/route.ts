@@ -23,6 +23,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "Invalid row", issues: v.issues }, { status: 400 });
   }
 
-  const stored = trafficRepo.addRow(params.id, v.row);
+  const stored = await trafficRepo.addRow(params.id, v.row);
   return NextResponse.json(stored);
 }

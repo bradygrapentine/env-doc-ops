@@ -37,14 +37,14 @@ export async function requireProjectAccess(
   const userId = await getSessionUserId();
   if (!userId)
     return { ok: false, error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  const project = projectRepo.get(projectId);
+  const project = await projectRepo.get(projectId);
   if (!project) {
     return {
       ok: false,
       error: NextResponse.json({ error: "Project not found" }, { status: 404 }),
     };
   }
-  const role = shareRepo.accessRole(projectId, userId);
+  const role = await shareRepo.accessRole(projectId, userId);
   if (!role) {
     return {
       ok: false,
@@ -67,20 +67,20 @@ export async function requireReportAccess(
   const userId = await getSessionUserId();
   if (!userId)
     return { ok: false, error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  const report = reportRepo.get(reportId);
+  const report = await reportRepo.get(reportId);
   if (!report)
     return {
       ok: false,
       error: NextResponse.json({ error: "Report not found" }, { status: 404 }),
     };
-  const project = projectRepo.get(report.projectId);
+  const project = await projectRepo.get(report.projectId);
   if (!project) {
     return {
       ok: false,
       error: NextResponse.json({ error: "Report not found" }, { status: 404 }),
     };
   }
-  const role = shareRepo.accessRole(project.id, userId);
+  const role = await shareRepo.accessRole(project.id, userId);
   if (!role) {
     return {
       ok: false,

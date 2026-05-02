@@ -27,7 +27,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const password = String(credentials?.password ?? "");
         if (!email || !password) return null;
         if (isUnauthenticatedBlocked(email, "signin", SIGNIN_BUCKET)) return null;
-        const user = userRepo.findByEmail(email);
+        const user = await userRepo.findByEmail(email);
         if (!user) return null;
         const ok = await bcrypt.compare(password, user.passwordHash);
         if (!ok) return null;

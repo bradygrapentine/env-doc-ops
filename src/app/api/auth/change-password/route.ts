@@ -34,12 +34,12 @@ export async function POST(req: Request) {
     );
   }
 
-  const user = userRepo.findById(userId);
+  const user = await userRepo.findById(userId);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   // findById doesn't return passwordHash; re-fetch via email to get it.
-  const full = userRepo.findByEmail(user.email);
+  const full = await userRepo.findByEmail(user.email);
   if (!full) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
   }
 
   const newHash = await bcrypt.hash(newPassword, 10);
-  userRepo.updatePassword(userId, newHash);
+  await userRepo.updatePassword(userId, newHash);
   clearPasswordRateLimit(userId, "change-password");
 
   return NextResponse.json({ ok: true });

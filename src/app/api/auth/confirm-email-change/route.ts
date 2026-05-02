@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   if (!token) {
     return NextResponse.json({ error: "missing" }, { status: 404 });
   }
-  const peeked = tokenRepo.peekEmailChange(token);
+  const peeked = await tokenRepo.peekEmailChange(token);
   if ("error" in peeked) {
     return NextResponse.json({ error: peeked.error }, { status: 404 });
   }
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   if (!token) {
     return NextResponse.json({ error: "missing" }, { status: 400 });
   }
-  const result = tokenRepo.consumeEmailChange(token);
+  const result = await tokenRepo.consumeEmailChange(token);
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
@@ -36,11 +36,11 @@ export async function POST(req: Request) {
   // returns conflict cleanly, and a try/catch so the narrow TOCTOU window
   // (concurrent UPDATE racing past the read) also surfaces as conflict
   // instead of a 500. users.email has a UNIQUE constraint that backs this.
-  if (userRepo.findByEmail(result.newEmail)) {
+  if (await userRepo.findByEmail(result.newEmail)) {
     return NextResponse.json({ error: "conflict" }, { status: 409 });
   }
   try {
-    userRepo.updateEmail(result.userId, result.newEmail);
+    await userRepo.updateEmail(result.userId, result.newEmail);
   } catch (err) {
     if ((err as Error).message?.includes("UNIQUE constraint failed")) {
       return NextResponse.json({ error: "conflict" }, { status: 409 });

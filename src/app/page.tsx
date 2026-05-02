@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function ProjectsPage() {
   const userId = await getSessionUserId();
   if (!userId) redirect("/signin");
-  const projects = projectRepo.listAccessible(userId);
+  const projects = await projectRepo.listAccessible(userId);
 
   return (
     <div>
